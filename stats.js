@@ -361,13 +361,13 @@ function renderStats() {
       <tbody>${legendRows}</tbody>
     </table>
     ${d.hasSched && d.notIn ? `<p class="note-s">${nf(d.notIn)} ${d.notIn === 1 ? 'cable de la tabla no figura' : 'cables de la tabla no figuran'} en el ${esc(sn)} y no se cuentan en el avance ni en los metros.</p>` : ''}
+    <div class="wk wk-rep">${d.weeks.length ? wkReportHtml(d) : ''}</div>
   </section>
 
   <section class="viz">
     <h3>Por semana</h3>
     ${d.weeks.length ? `
     <div class="wk">${mHtml}</div>
-    <div class="wk">${wkReportHtml(d)}</div>
     <div class="wk">
       <p class="chart-t">Cables tendidos acumulados${d.hasSched ? ' (sobre ' + nf(d.total) + ' cables)' : ''}</p>
       <div class="chart" id="chCum"></div>

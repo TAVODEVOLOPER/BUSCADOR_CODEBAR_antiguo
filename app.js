@@ -483,6 +483,7 @@ function setTab(name) {
   if (was && was !== mod && $('#view').classList.contains('open')) closeCable();
   $('#app').dataset.tab = name; $('#app').dataset.mod = mod; LS.set('tab_' + mod, name);
   if (was !== mod) $$('.sgrp[data-mod]').forEach(g => { g.open = g.dataset.mod === mod; });
+  { const lg = $('.sgrp.lib'); if (lg) { if (name === 'library') $$('.sgrp').forEach(g => { g.open = g === lg; }); else if (lg.open) { lg.open = false; const mg = $('.sgrp[data-mod="' + mod + '"]'); if (mg) mg.open = true; } } }
   { const cur = $('.snav[data-tab="' + name + '"]'); $('#barSec').textContent = cur ? cur.querySelector('span').textContent : ''; }
   navOpen(false);
   $$('.tab,.snav[data-tab]').forEach(x => { const on = x.dataset.tab === name; x.classList.toggle('active', on); x.setAttribute('aria-selected', on); });
@@ -1154,7 +1155,7 @@ const PDF_DEFAULT = [['Installer'], ['CABLE_NUMBER'], ['Released_CT'], ['Cable_R
 let pdfMode = 'cab';   // 'cab' = lista de Cableado, 'con' = lista de Conexionado
 const pdfItems = () => pdfMode === 'con' ? CX.list : scanList;
 const pdfKey = () => pdfMode === 'con' ? 'pdfColsCx' : 'pdfCols';
-const PDF_DEFAULT_CX = ['CABLE_NUMBER', 'From_Tag', 'From_Area', 'Subc_Conn_From', 'STATUS_FROM', 'To_Tag', 'To_Area', 'Subc_Conn_To', 'STATUS_TO', 'Avance', PDF_NOTAS];
+const PDF_DEFAULT_CX = ['CABLE_NUMBER', 'From_Tag', 'From_Area', 'Subc_Conn_From', 'STATUS_FROM', 'To_Tag', 'To_Area', 'Subc_Conn_To', 'STATUS_TO', PDF_NOTAS];
 const pdfVal = (x, n) => pdfMode === 'con' ? cxNice(n === 'CABLE_NUMBER' ? x.tag : cxItemVal(x, n)) : listVal(x.tag, n);
 function pdfNames() {   // columnas de la tabla y, además, las del CC_SCHEDULE que la tabla no tiene
   if (pdfMode === 'con') return ['Avance', 'Origen', ...(CX.data ? CX.data.cols.map(c => c.name) : [])];
@@ -1182,7 +1183,7 @@ function openPdf() {
 function renderPdfPicker() {
   const f = nname($('#pFilter').value), all = [PDF_NOTAS, ...pdfNames()];
   const label = n => n === PDF_NOTAS ? 'NOTAS (columna en blanco para observaciones)' : n;
-  $('#pHelp').textContent = pdfMode === 'con' ? `${pdfItems().length.toLocaleString('es-ES')} cables. Formato de campo: cable, desde, hasta, status, casilla de conexión y observaciones. Cabe más o menos 15 cables por hoja.` : `${pdfItems().length.toLocaleString('es-ES')} cables. Orden de columnas: ${pdfSel.map(n => n === PDF_NOTAS ? 'NOTAS' : n).join(' / ') || 'ninguna'}`;
+  $('#pHelp').textContent = pdfMode === 'con' ? `${pdfItems().length.toLocaleString('es-ES')} cables. Marca las columnas que quieres en la hoja; el número indica el orden. Tras cada STATUS se añade una casilla para marcar en campo. Con 10 columnas caben unos 15 cables por hoja.` : `${pdfItems().length.toLocaleString('es-ES')} cables. Orden de columnas: ${pdfSel.map(n => n === PDF_NOTAS ? 'NOTAS' : n).join(' / ') || 'ninguna'}`;
   $('#pList').innerHTML = all.filter(n => !f || nname(label(n)).includes(f)).map(n => {
     const k = pdfSel.indexOf(n);
     return `<label class="citem"><input type="checkbox" data-n="${esc(n)}" ${k >= 0 ? 'checked' : ''}>${k >= 0 ? `<span class="ord">${k + 1}</span>` : '<b></b>'}<span>${esc(label(n))}</span></label>`;

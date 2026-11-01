@@ -305,7 +305,10 @@ td .x{min-width:36px;min-height:36px;border:0;background:none;color:var(--bad);f
 .wk+.wk{margin-top:26px}
 .h3b{margin-top:30px}
 .h4{font-size:16px;margin:0 0 2px}
-.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px;margin:16px 0 6px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px 18px;margin:16px 0 6px}
+.kpis>.kpi:last-child:nth-child(odd){grid-column:1/-1}
+@media (min-width:600px){.kpis>.kpi:last-child:nth-child(odd){grid-column:auto}}
+.wk-rep{margin-top:26px}
 .kpi{display:flex;flex-direction:column;gap:1px;padding-left:12px;border-left:4px solid var(--steel)}
 .kpi span{font-size:13px;color:var(--muted)}
 .kpi b{font-size:26px;line-height:1.15;font-weight:700}
@@ -437,7 +440,7 @@ td .x{min-width:36px;min-height:36px;border:0;background:none;color:var(--bad);f
 }
 
 /* Resumen: etiquetas clave pulsables y animación de entrada */
-.kpis.keys{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.kpis.keys{grid-template-columns:repeat(auto-fit,minmax(125px,1fr))}
 button.kpi{appearance:none;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;border-top:0;border-right:0;border-bottom:0;padding-top:4px;padding-bottom:4px;transition:background .15s,border-color .15s}
 button.kpi:hover,button.kpi:focus-visible{background:var(--raise);border-left-color:var(--ink)}
 .row.nodata{display:block;width:100%;opacity:.75;cursor:default}
@@ -747,6 +750,7 @@ body{background:var(--bg) url(bg-m.jpg) center/cover fixed no-repeat}
 .sgrp .pip{width:10px;height:10px;border-radius:3px;background:var(--cy)}
 .sgrp.con .pip{background:#3CC8C8}
 .sgrp.tools .pip{background:#7E94A2}
+.sgrp.lib .pip{background:#9B7FD4}
 .ssub{margin:10px 12px 2px 34px;font:700 12px var(--font);color:#7E94A2}
 .sgrp .snav{min-height:42px;padding-left:34px;font-size:15px;font-weight:600}
 .sgrp .snav svg{width:20px;height:20px}
@@ -781,5 +785,3 @@ body{background:var(--bg) url(bg-m.jpg) center/cover fixed no-repeat}
 .wk-st th:first-child,.wk-st td:first-child{text-align:left;position:sticky;left:0;background:var(--surface)}
 .wk-st tfoot td{font-weight:700;border-top:2px solid var(--hair)}
 .legend tfoot td{font-weight:700;border-top:2px solid var(--hair)}
-#pdfModal.compact #pList,#pdfModal.compact #pFilter,#pdfModal.compact #pDefault{display:none}
-#pdfModal.compact .sheet{height:auto}

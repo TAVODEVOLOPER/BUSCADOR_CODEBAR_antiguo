@@ -245,6 +245,7 @@ function renderCx(keepFocus) {
     ${can ? `<div class="cx-save"><button class="btn primary" id="cxSaveBtn" ${dirty ? '' : 'disabled'}>Guardar cambios${dirty ? ` (${dirty})` : ''}</button><button class="btn" id="cxDiscard" ${dirty ? '' : 'disabled'}>Descartar</button><span class="muted">Se guarda con tu nombre y la fecha.</span></div>` : ''}
     ${inCab ? '<div class="btn-row"><button class="btn" id="cxToCab">Abrir en Cableado</button></div>' : ''}
     <section class="cx-hist"><h3>Historial de cambios <small class="muted">${hist.length}</small></h3>
+      <p class="help">Los cambios se guardan en la hoja CONEXIONADO_LOG de tu Google Sheet, con fecha y nombre. ${cxAdm() ? 'Como administrador puedes deshacer cada cambio.' : 'Solo el administrador puede deshacer cambios.'}</p>
       ${hist.map(h => `<div class="fs-row"><div><div><b>${esc(h.col.replace(/_/g, ' '))}</b>: ${h.from ? esc(fmtVal(h.from)) : '<i>vacío</i>'} → ${h.to ? esc(fmtVal(h.to)) : '<i>vacío</i>'}</div><small>${esc(h.date)}${h.who ? ', ' + esc(h.who) : ''}${h.pend ? ' <span class="sync wait">Pendiente de subir</span>' : ''}</small></div>${cxAdm() && can && !h.pend && cxCol(h.col) !== undefined ? `<button class="btn small quiet" data-cx-undo="${esc(h.col)}" data-v="${esc(h.from)}">Deshacer</button>` : ''}</div>`).join('') || '<p class="empty">Todavía no hay cambios hechos desde la app.</p>'}
     </section>`;
 }

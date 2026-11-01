@@ -186,3 +186,7 @@ La clave `DRAGADOS-ADMIN` va en config.js, que es público en GitHub Pages: no e
 ## v1.21.0
 - Biblioteca: nuevas carpetas de sistemas FDS, HVAC, Tierra y Procesos (Drive: CableScan_PDF_FDS, _HVAC, _Tierra, _Procesos). Vuelve a ejecutar `autorizar` en Apps Script y reimplementa para crearlas.
 - Conexionado: campos verdes por llenar; al llenarse cambian a azul.
+- Resumen: KPIs y columnas rellenan el espacio sin huecos; "Reporte última semana" pasa a la columna izquierda.
+- Menú: "Herramientas" pasa a llamarse "Ajustes"; nuevo grupo "Herramientas" con la Biblioteca.
+- Lista de trabajo de Conexionado: el usuario elige las columnas y su orden en el PDF (como en Cableado).
+- Historial de Conexionado: se guarda en la pestaña CONEXIONADO_LOG; solo el administrador deshace cambios.

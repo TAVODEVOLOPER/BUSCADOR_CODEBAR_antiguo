@@ -105,27 +105,43 @@ async function cxWorkPdf(title) {
   const sh = v => String(v ?? '').replace(/^#HKF\./, '').trim(), V = (x, n) => String(cxItemVal(x, n) ?? '').trim();
   const key = x => (V(x, 'From_Area') || '~') + '|' + (V(x, 'To_Area') || '~') + '|' + x.tag;   // por área; los nuevos sin área al final
   const items = CX.list.slice().sort((a, b) => key(a).localeCompare(key(b), 'es', { numeric: true }));
-  const side = (x, s) => { const stt = V(x, 'STATUS_' + s).toUpperCase(), ar = V(x, s + '_Area'), em = V(x, 'Subc_Conn_' + s); return { stt, txt: `${sh(V(x, s + '_Tag')) || '-'}\n${[ar, em].filter(Boolean).join('  |  ') || ' '}` }; };
-  const body = items.map((x, n) => { const f = side(x, 'From'), t = side(x, 'To'), nuevo = cxIsNew(x.tag);
-    return [n + 1, `${sh(x.tag)}\n${nuevo ? 'NUEVO (CC_SCHEDULE)' : 'Avance ' + cxItemAv(x) + ' %'}`, f.txt, f.stt === 'IMPUTADO' ? 'HECHO' : (f.stt ? f.stt : 'SIN STATUS'), f.stt === 'IMPUTADO' ? 'OK' : '', t.txt, t.stt === 'IMPUTADO' ? 'HECHO' : (t.stt ? t.stt : 'SIN STATUS'), t.stt === 'IMPUTADO' ? 'OK' : '', '']; });
+  const cols = pdfSel.length ? pdfSel.slice() : pdfDefaults();   // las columnas que eligió el usuario, en su orden
+  const isSt = n => /^STATUS_(FROM|TO)$/i.test(n);
+  const head = ['#'], kinds = ['n'];
+  cols.forEach(n => {
+    if (n === PDF_NOTAS) { head.push('Observaciones'); kinds.push('notes'); return; }
+    head.push(n.replace(/_/g, ' ')); kinds.push(isSt(n) ? 'st' : n === 'CABLE_NUMBER' ? 'cable' : 'v');
+    if (isSt(n)) { head.push('Conex.'); kinds.push('box'); }
+  });
+  const body = items.map((x, k) => {
+    const row = [k + 1];
+    cols.forEach(n => {
+      if (n === PDF_NOTAS) return row.push('');
+      if (n === 'CABLE_NUMBER') return row.push(sh(x.tag) + (cxIsNew(x.tag) ? '\nNUEVO (CC_SCHEDULE)' : ''));
+      if (n === 'Avance') return row.push(cxItemAv(x) + ' %');
+      if (isSt(n)) { const st = V(x, n).toUpperCase(); row.push(st === 'IMPUTADO' ? 'HECHO' : (st || 'SIN STATUS')); return row.push(st === 'IMPUTADO' ? 'OK' : ''); }
+      row.push(sh(cxNice(cxItemVal(x, n))));
+    });
+    return row;
+  });
   const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), when = new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
-  const nn = items.filter(x => cxIsNew(x.tag)).length;
+  const nn = items.filter(x => cxIsNew(x.tag)).length, colStyles = {};
+  kinds.forEach((kd, i) => { if (kd === 'n') colStyles[i] = { cellWidth: 8, halign: 'center' }; else if (kd === 'box') colStyles[i] = { cellWidth: 12, halign: 'center' }; else if (kd === 'st') colStyles[i] = { cellWidth: 22, halign: 'center', fontSize: 6.8 }; else if (kd === 'cable') colStyles[i] = { fontStyle: 'bold' }; else if (kd === 'notes') colStyles[i] = { cellWidth: 'auto', minCellWidth: 34 }; });
   doc.autoTable({
-    head: [['#', 'Cable', 'Desde (From)', 'Status From', 'Conex.', 'Hasta (To)', 'Status To', 'Conex.', 'Observaciones']], body,
+    head: [head], body,
     startY: 19, margin: { top: 19, left: 8, right: 8, bottom: 11 },
     styles: { font: 'helvetica', fontSize: 7.5, cellPadding: { top: 1.4, bottom: 1.4, left: 1.6, right: 1.6 }, lineColor: [150, 158, 166], lineWidth: 0.15, valign: 'middle', overflow: 'linebreak', minCellHeight: 11 },
-    headStyles: { fillColor: [16, 32, 48], textColor: 255, fontStyle: 'bold', minCellHeight: 6.5, fontSize: 7.5 },
+    headStyles: { fillColor: [16, 32, 48], textColor: 255, fontStyle: 'bold', minCellHeight: 6.5, fontSize: 7.2 },
     alternateRowStyles: { fillColor: [246, 248, 250] },
-    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 52, fontStyle: 'bold' }, 2: { cellWidth: 54 }, 3: { cellWidth: 24, halign: 'center', fontSize: 6.8 }, 4: { cellWidth: 12, halign: 'center' }, 5: { cellWidth: 54 }, 6: { cellWidth: 24, halign: 'center', fontSize: 6.8 }, 7: { cellWidth: 12, halign: 'center' }, 8: { cellWidth: 'auto' } },
+    columnStyles: colStyles,
     rowPageBreak: 'avoid',
     didParseCell: d => {
       if (d.section !== 'body') return;
-      if (d.column.index === 3 || d.column.index === 6) { const v = String(d.cell.raw); d.cell.styles.fontStyle = 'bold'; d.cell.styles.textColor = v === 'HECHO' ? [10, 120, 80] : v === 'FALTA' || v === 'NO ENCONTRADO' ? [190, 40, 30] : [150, 100, 0]; }
-      if (d.column.index === 1) d.cell.styles.fontStyle = 'bold';
+      if (kinds[d.column.index] === 'st') { const v = String(d.cell.raw); d.cell.styles.fontStyle = 'bold'; d.cell.styles.textColor = v === 'HECHO' ? [10, 120, 80] : v === 'FALTA' || v === 'NO ENCONTRADO' ? [190, 40, 30] : [150, 100, 0]; }
     },
     didDrawCell: d => {   // casilla vacía para marcar en campo
-      if (d.section !== 'body' || (d.column.index !== 4 && d.column.index !== 7)) return;
+      if (d.section !== 'body' || kinds[d.column.index] !== 'box') return;
       const c = d.cell, s = 4.2, x = c.x + (c.width - s) / 2, y = c.y + (c.height - s) / 2;
       doc.setDrawColor(40, 50, 60); doc.setLineWidth(0.35); if (String(c.raw) !== 'OK') doc.rect(x, y, s, s);
     },
