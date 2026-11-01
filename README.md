@@ -190,3 +190,10 @@ La clave `DRAGADOS-ADMIN` va en config.js, que es público en GitHub Pages: no e
 - Menú: "Herramientas" pasa a llamarse "Ajustes"; nuevo grupo "Herramientas" con la Biblioteca.
 - Lista de trabajo de Conexionado: el usuario elige las columnas y su orden en el PDF (como en Cableado).
 - Historial de Conexionado: se guarda en la pestaña CONEXIONADO_LOG; solo el administrador deshace cambios.
+- Ficha de Conexionado: botón 'Elegir campos' para mostrar solo los datos que quieras (se recuerda en el dispositivo).
+
+## v1.22.0
+- Conexionado: los datos que llenan los usuarios son "avances de campo". NO modifican la hoja CONEXIONADO: se guardan en CONEXIONADO_LOG con estado Pendiente (columnas nuevas estado, revisado_por, fecha_revision) y la app los muestra encima de la tabla.
+- Pestaña "Por imputar" en Buscar: filtra los cables con avances pendientes; PDF de avances; el administrador los marca Imputado o Descartado (por cable o todos los filtrados).
+- Lista de trabajo en PDF: anchos medidos por columna, sin texto vertical.
+- Modo oscuro: los campos llenados se leen bien.

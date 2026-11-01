@@ -77,7 +77,7 @@ var HOJA_PERSONAL = 'PERSONAL';
 var H_PERSONAL = ['codigo', 'nombre', 'cargo', 'activo', 'editar_notas', 'editar_conexionado', 'admin'];
 var HOJA_CONEX = 'CONEXIONADO';          // pestaña del sistema de conexionado; las columnas con cabecera verde (#00B050) son las editables
 var HOJA_CONEX_LOG = 'CONEXIONADO_LOG';
-var H_CONEX_LOG = ['id', 'fecha', 'cable', 'columna', 'antes', 'despues', 'autor'];
+var H_CONEX_LOG = ['id', 'fecha', 'cable', 'columna', 'antes', 'despues', 'autor', 'estado', 'revisado_por', 'fecha_revision'];
 var CONEX_EDITABLES = ['MarcaCampo_From', 'STATUS_FROM', 'FECHA_STATUS_FROM', 'MarcaCampo_To', 'STATUS_TO', 'FECHA_STATUS_TO', 'OBSERVACION'];   // por si no se detecta el color
 var CONEX_ESTADOS = ['COIL', 'FALTA', 'IMPUTADO', 'NO ENCONTRADO', 'PENDING', 'POR IMPUTAR', 'REASIGNADO'];   // por si no existe el rango STATUS_FROM_TO
 var H_ARCH = ['uid', 'archivo_id', 'tag', 'tipo', 'nombre', 'mime', 'fecha', 'autor'];
@@ -134,7 +134,10 @@ function handle_(p) {
       case 'conex': return out_(getConex_(p.hash));
       case 'file': return out_(getFile_(p.uid));
       case 'pdf': return out_(getPdf_(p.id));
+      case 'marcarAvances':
+        if (!adm) throw new Error('Solo el administrador puede marcar avances');
       case 'uploadPdf': case 'delPdf':
+        if (p.action !== 'marcarAvances')
         if (!adm) throw new Error(ADMIN_TOKEN ? 'Clave de administrador incorrecta' : 'Subir PDF desde la app está desactivado: pon un ADMIN_TOKEN en el script');
       case 'addNote': case 'delNote': case 'upload': case 'delFile': case 'scans': case 'clearScans': case 'setConex':
         var lock = LockService.getScriptLock();
@@ -251,7 +254,8 @@ function autorizar() {
   sheet_(HOJA_PDF, H_PDF);
   var shp = sheet_(HOJA_PERSONAL, H_PERSONAL);
   shp.getRange(1, 1, 1, H_PERSONAL.length).setValues([H_PERSONAL]);
-  sheet_(HOJA_CONEX_LOG, H_CONEX_LOG);
+  var shl = sheet_(HOJA_CONEX_LOG, H_CONEX_LOG);
+  shl.getRange(1, 1, 1, H_CONEX_LOG.length).setValues([H_CONEX_LOG]);
   var shn = sheet_(HOJA_NOTAS, H_NOTAS);
   shn.getRange(1, 1, 1, H_NOTAS.length).setValues([H_NOTAS]);
   fotosFolder_();
@@ -372,7 +376,7 @@ function getConex_(clientHash) {
   var lsh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA_CONEX_LOG), log = [];
   if (lsh && lsh.getLastRow() > 1) {
     var lv = rows_(lsh), from = Math.max(0, lv.length - 3000);
-    for (var i = from; i < lv.length; i++) log.push([String(lv[i][1]), String(lv[i][2]), String(lv[i][3]), String(lv[i][4]), String(lv[i][5]), String(lv[i][6])]);
+    for (var i = from; i < lv.length; i++) log.push([String(lv[i][1]), String(lv[i][2]), String(lv[i][3]), String(lv[i][4]), String(lv[i][5]), String(lv[i][6]), String(lv[i][7] || ''), String(lv[i][0])]);
   }
   var cols = L.head.map(function (name, i) { return { name: name, letter: colLetter_(i), group: L.grp[i], edit: L.edit[i] }; });
   var estados = conexEstados_();
@@ -389,6 +393,18 @@ function isoWeekNum_(d) {
   t.setUTCDate(t.getUTCDate() + 4 - dn);
   return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
 }
+/* Avances de campo: NO modifican la hoja CONEXIONADO. Se guardan en CONEXIONADO_LOG con estado Pendiente
+   y la app los muestra encima de la tabla hasta que el administrador los marca como Imputado (en el sistema externo). */
+function conexPendientes_(lsh) {   // último valor pendiente por cable y columna
+  var map = {};
+  if (!lsh || lsh.getLastRow() < 2) return map;
+  var lv = rows_(lsh);
+  for (var i = 0; i < lv.length; i++) {
+    if (String(lv[i][7]) !== 'Pendiente') continue;
+    map[String(lv[i][2]).toUpperCase().replace(/\s+/g, '') + '|' + lv[i][3]] = String(lv[i][5]);
+  }
+  return map;
+}
 function setConex_(p) {
   if (!p.cable || !p.changes) throw new Error('Faltan datos del conexionado');
   var sh = conexSheet_(), L = conexLayout_(sh), tz = Session.getScriptTimeZone();
@@ -396,41 +412,46 @@ function setConex_(p) {
   var col = sh.getRange(L.hr + 2, L.ti + 1, Math.max(1, sh.getLastRow() - L.hr - 1), 1).getValues(), row = -1;
   for (var i = 0; i < col.length; i++) { if (String(col[i][0]).toUpperCase().replace(/\s+/g, '') === key) { row = L.hr + 2 + i; break; } }
   if (row < 0) throw new Error('El cable ' + p.cable + ' no está en ' + HOJA_CONEX);
-  var cur = sh.getRange(row, 1, 1, L.head.length).getValues()[0];
+  var lsh = sheet_(HOJA_CONEX_LOG, H_CONEX_LOG);
+  if (lsh.getLastColumn() < H_CONEX_LOG.length) lsh.getRange(1, 1, 1, H_CONEX_LOG.length).setValues([H_CONEX_LOG]);
+  var pend = conexPendientes_(lsh), cur = sh.getRange(row, 1, 1, L.head.length).getValues()[0];
+  var eff = function (ci) { var k = key + '|' + L.head[ci]; return pend[k] !== undefined ? pend[k] : cur[ci]; };
   // reglas: una sección (FROM / TO) con STATUS IMPUTADO queda bloqueada, y solo el administrador puede borrar datos
   Object.keys(p.changes).forEach(function (name) {
     var ci0 = L.head.indexOf(name); if (ci0 < 0) return;
     var g0 = String(L.grp[ci0] || '').toUpperCase().trim(), si = L.head.findIndex(function (h) { return String(h).toUpperCase().replace(/[\s_]+/g, '') === 'STATUS' + g0; });
-    if (!p.adm && si >= 0 && (g0 === 'FROM' || g0 === 'TO') && String(cur[si]).trim().toUpperCase() === 'IMPUTADO')
+    if (!p.adm && si >= 0 && (g0 === 'FROM' || g0 === 'TO') && String(eff(si)).trim().toUpperCase() === 'IMPUTADO')
       throw new Error('La sección ' + g0 + ' ya está IMPUTADA: solo el administrador puede editarla');
-    var nv = String(p.changes[name] == null ? '' : p.changes[name]).trim(), old = cur[ci0];
+    var nv = String(p.changes[name] == null ? '' : p.changes[name]).trim(), old = eff(ci0);
     if (!p.adm && !nv && String(old).trim() !== '') throw new Error('Solo el administrador puede borrar datos (' + name + ')');
   });
-  var estados = conexEstados_(), lsh = sheet_(HOJA_CONEX_LOG, H_CONEX_LOG), now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), done = 0;
+  var estados = conexEstados_(), now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), done = 0;
   Object.keys(p.changes).forEach(function (name) {
     var ci = L.head.indexOf(name);
     if (ci < 0 || !L.edit[ci]) throw new Error('La columna ' + name + ' no se puede editar');
     var val = String(p.changes[name] == null ? '' : p.changes[name]).trim().slice(0, 1000);
     if (/^STATUS_(FROM|TO)$/.test(name) && val && estados.indexOf(val) < 0) throw new Error('Status no válido: ' + val);
+    if (/^FECHA_/.test(name) && val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) throw new Error('Fecha no válida: ' + val);
     var lid = String(p.id || '') + ':' + name;
     if (p.id && findRow_(lsh, lid)) return;   // ya aplicado (reintento tras un corte)
-    var cell = sh.getRange(row, ci + 1), before = cell.getValue();
-    var out = val;
-    if (/^FECHA_/.test(name)) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(val); out = m ? new Date(+m[1], +m[2] - 1, +m[3]) : ''; }
-    else if (/^\d+$/.test(val)) out = Number(val);
-    else out = safe_(val, 1000);
-    cell.setValue(out);
-    if (/^FECHA_/.test(name)) {   // la semana se calcula sola a partir de la fecha (si su celda no tiene fórmula)
-      var gw = String(L.grp[ci] || '').toUpperCase(), wk = (out instanceof Date) ? isoWeekNum_(out) : '';
-      L.head.forEach(function (hn, wi) {
-        if (!/SEM|WEEK/i.test(hn) || String(L.grp[wi] || '').toUpperCase() !== gw) return;
-        var wc = sh.getRange(row, wi + 1); if (!wc.getFormula()) wc.setValue(wk);
-      });
-    }
-    lsh.appendRow([lid, now, safe_(p.cable, 200), name, safe_(before instanceof Date ? Utilities.formatDate(before, tz, 'yyyy-MM-dd') : String(before), 1000), safe_(val, 1000), safe_(p.author, 80)]);
+    var before = eff(ci);
+    lsh.appendRow([lid, now, safe_(p.cable, 200), name, safe_(before instanceof Date ? Utilities.formatDate(before, tz, 'yyyy-MM-dd') : String(before), 1000), safe_(val, 1000), safe_(p.author, 80), 'Pendiente', '', '']);
     done++;
   });
   return { ok: true, applied: done };
+}
+/* el administrador marca avances como Imputado (ya pasados al sistema externo) o Descartado */
+function marcarAvances_(p) {
+  var ids = {}, n = 0, estado = p.estado === 'Descartado' ? 'Descartado' : 'Imputado';
+  (p.ids || []).forEach(function (x) { ids[String(x)] = 1; });
+  var lsh = sheet_(HOJA_CONEX_LOG, H_CONEX_LOG), tz = Session.getScriptTimeZone(), now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  if (lsh.getLastRow() < 2) return { ok: true, marcados: 0 };
+  var rg = lsh.getRange(2, 1, lsh.getLastRow() - 1, 10), v = rg.getValues();
+  for (var i = 0; i < v.length; i++) {
+    if (ids[String(v[i][0])] && String(v[i][7]) === 'Pendiente') { v[i][7] = estado; v[i][8] = safe_(p.author, 80); v[i][9] = now; n++; }
+  }
+  if (n) rg.setValues(v);
+  return { ok: true, marcados: n };
 }
 
 /* ---------- lecturas ---------- */
@@ -719,6 +740,9 @@ function write_(p) {
 
     case 'setConex':
       return setConex_(p);
+
+    case 'marcarAvances':
+      return marcarAvances_(p);
 
     case 'clearScans':
       guardSheet_(p.sheet || 'ESCANEOS');

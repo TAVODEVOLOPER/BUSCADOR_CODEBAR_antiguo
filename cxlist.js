@@ -127,12 +127,33 @@ async function cxWorkPdf(title) {
   const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), when = new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
   const nn = items.filter(x => cxIsNew(x.tag)).length, colStyles = {};
-  kinds.forEach((kd, i) => { if (kd === 'n') colStyles[i] = { cellWidth: 8, halign: 'center' }; else if (kd === 'box') colStyles[i] = { cellWidth: 12, halign: 'center' }; else if (kd === 'st') colStyles[i] = { cellWidth: 22, halign: 'center', fontSize: 6.8 }; else if (kd === 'cable') colStyles[i] = { fontStyle: 'bold' }; else if (kd === 'notes') colStyles[i] = { cellWidth: 'auto', minCellWidth: 34 }; });
+  // fechas cortas y anchos medidos: ninguna columna se parte letra por letra
+  body.forEach(rw => rw.forEach((v, k) => { if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) rw[k] = v.slice(8) + '/' + v.slice(5, 7) + '/' + v.slice(2, 4); else if (typeof v === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) rw[k] = v.replace(/\/(\d{2})(\d{2})$/, '/$2'); }));
+  const avail = W - 16, PAD = 3.4, wOf = (t, bold) => { doc.setFont('helvetica', bold ? 'bold' : 'normal'); return doc.getTextWidth(t); };
+  let fs = 7.5, mins = [], ideals = [];
+  const measure = () => {
+    doc.setFontSize(fs); mins = []; ideals = [];
+    head.forEach((h, k) => {
+      const kd = kinds[k];
+      if (kd === 'n') { mins.push(7); ideals.push(7); return; }
+      if (kd === 'box') { mins.push(11); ideals.push(11); return; }
+      let mn = Math.max(...String(h).split(/\s+/).map(w => wOf(w, true))), id = wOf(String(h), true);
+      body.forEach(rw => String(rw[k] ?? '').split('\n').forEach(line => { id = Math.max(id, wOf(line, kd === 'cable')); line.split(/\s+/).forEach(w => { mn = Math.max(mn, wOf(w, kd === 'cable' || kd === 'st')); }); }));
+      if (kd === 'notes') { mn = Math.max(mn, 30 / 1); id = Math.max(id, 45); }
+      mins.push(mn + PAD); ideals.push(Math.min(id + PAD, kd === 'notes' ? 70 : 46));
+    });
+  };
+  measure(); while (mins.reduce((a, b) => a + b, 0) > avail && fs > 5.6) { fs -= 0.3; measure(); }
+  const widths = mins.slice(), extra = avail - mins.reduce((a, b) => a + b, 0), want = ideals.map((v, k) => Math.max(0, v - mins[k])), wantSum = want.reduce((a, b) => a + b, 0);
+  if (extra > 0) { const f = wantSum ? Math.min(1, extra / wantSum) : 0; want.forEach((v, k) => { widths[k] += v * f; }); const left = avail - widths.reduce((a, b) => a + b, 0); if (left > 0) { const nk = kinds.lastIndexOf('notes'), t = nk >= 0 ? nk : widths.length - 1; widths[t] += left; } }
+  else { const sc = avail / widths.reduce((a, b) => a + b, 0); widths.forEach((v, k) => { widths[k] = v * sc; }); }
+  kinds.forEach((kd, k) => { colStyles[k] = { cellWidth: widths[k], halign: kd === 'n' || kd === 'box' || kd === 'st' ? 'center' : 'left', fontStyle: kd === 'cable' ? 'bold' : 'normal' }; });
   doc.autoTable({
     head: [head], body,
     startY: 19, margin: { top: 19, left: 8, right: 8, bottom: 11 },
-    styles: { font: 'helvetica', fontSize: 7.5, cellPadding: { top: 1.4, bottom: 1.4, left: 1.6, right: 1.6 }, lineColor: [150, 158, 166], lineWidth: 0.15, valign: 'middle', overflow: 'linebreak', minCellHeight: 11 },
-    headStyles: { fillColor: [16, 32, 48], textColor: 255, fontStyle: 'bold', minCellHeight: 6.5, fontSize: 7.2 },
+    styles: { font: 'helvetica', fontSize: fs, cellPadding: { top: 1.4, bottom: 1.4, left: 1.7, right: 1.7 }, lineColor: [150, 158, 166], lineWidth: 0.15, valign: 'middle', overflow: 'linebreak', minCellHeight: 11 },
+    headStyles: { fillColor: [16, 32, 48], textColor: 255, fontStyle: 'bold', minCellHeight: 7, fontSize: fs, valign: 'middle' },
+    tableWidth: avail,
     alternateRowStyles: { fillColor: [246, 248, 250] },
     columnStyles: colStyles,
     rowPageBreak: 'avoid',
@@ -152,4 +173,41 @@ async function cxWorkPdf(title) {
     },
   });
   doc.save(`lista_conexionado_${cxStamp()}.pdf`);
+}
+
+/* ---------- PDF de avances de campo por imputar (para pasarlos al sistema externo) ---------- */
+async function cxAvancesPdf(hits) {
+  if (!(window.jspdf && window.jspdf.jsPDF)) { await loadScript('vendor/jspdf.umd.min.js'); await loadScript('vendor/jspdf.plugin.autotable.min.js'); }
+  const d = CX.data, sh = v => String(v ?? '').replace(/^#HKF\./, '').trim(), fd = v => /^\d{4}-\d{2}-\d{2}$/.test(v) ? v.split('-').reverse().join('/') : v;
+  const body = [];
+  hits.forEach(i => {
+    const r = d.rows[i], tag = r[CX.ti], o = CX.pmap.get(norm(tag)); if (!o) return;
+    const sides = {};
+    o.forEach((e, col) => { const c = d.cols[CX.ci.get(col)]; if (!c) return; const g = cxGrp(c) || 'GENERAL'; (sides[g] = sides[g] || []).push([c, e]); });
+    ['FROM', 'TO', ...Object.keys(sides).filter(g => g !== 'FROM' && g !== 'TO')].forEach(g => {
+      const list = sides[g]; if (!list) return;
+      const find = re => list.find(([c]) => re.test(c.name)), st = find(/^STATUS_(FROM|TO)$/i), fe = find(/^FECHA_/i);
+      const rest = list.filter(x => x !== st && x !== fe).map(([c, e]) => `${c.name.replace(/_/g, ' ')}: ${fd(e.to) || '(vacío)'}`).join('\n');
+      const who = list.map(([, e]) => e).sort((a, b) => b.date.localeCompare(a.date))[0];
+      const tg = g === 'FROM' ? sh(r[CX.ci.get('From_Tag')]) : g === 'TO' ? sh(r[CX.ci.get('To_Tag')]) : '';
+      body.push([sh(tag), g === 'GENERAL' ? 'General' : (g === 'FROM' ? 'From' : g === 'TO' ? 'To' : g) + (tg ? '\n' + tg : ''), st ? (st[1].to || '(vacío)') : '', fe ? fd(fe[1].to) : '', rest, `${who.who || ''}\n${who.date}`, '']);
+    });
+  });
+  const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), when = new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+  doc.autoTable({
+    head: [['Cable', 'Punta', 'Status', 'Fecha status', 'Otros datos', 'Reportó', 'Imputado']], body,
+    startY: 19, margin: { top: 19, left: 8, right: 8, bottom: 11 },
+    styles: { font: 'helvetica', fontSize: 8, cellPadding: 1.6, lineColor: [150, 158, 166], lineWidth: 0.15, valign: 'middle', overflow: 'linebreak', minCellHeight: 10 },
+    headStyles: { fillColor: [16, 32, 48], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [246, 248, 250] },
+    columnStyles: { 0: { cellWidth: 56, fontStyle: 'bold' }, 1: { cellWidth: 50 }, 2: { cellWidth: 28, fontStyle: 'bold' }, 3: { cellWidth: 24 }, 4: { cellWidth: 'auto' }, 5: { cellWidth: 38 }, 6: { cellWidth: 18 } },
+    rowPageBreak: 'avoid',
+    didDrawCell: x => { if (x.section !== 'body' || x.column.index !== 6) return; const c = x.cell, s = 4.4; doc.setDrawColor(40, 50, 60); doc.setLineWidth(0.35); doc.rect(c.x + (c.width - s) / 2, c.y + (c.height - s) / 2, s, s); },
+    didDrawPage: x => {
+      doc.setFontSize(13); doc.setTextColor(16, 32, 48); doc.text('Avances de conexionado por imputar', 8, 10.5);
+      doc.setFontSize(8.5); doc.setTextColor(90, 100, 110); doc.text(`${when}  |  ${hits.length} cables`, 8, 15.5); doc.text(`Hoja ${x.pageNumber}`, W - 8, H - 4.5, { align: 'right' });
+    },
+  });
+  doc.save(`avances_conexionado_${cxStamp()}.pdf`);
 }

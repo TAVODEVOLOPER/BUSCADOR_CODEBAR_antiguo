@@ -2,7 +2,9 @@
    Las columnas con cabecera verde son editables; el resto viene con fórmulas y solo se lee.
    Filas y columnas se leen tal cual están, así que la tabla puede crecer sin tocar la app.
    Las ediciones se guardan en el teléfono, se suben solas (aunque no haya cobertura) y quedan en el historial. */
-const CX = { data: null, ci: new Map(), ti: 0, idx: new Map(), hay: [], q: [], qText: '', st: '', lim: 120, sel: '', draft: {}, pulling: false, src: 'sheet', av: '', unlock: new Set(), list: [], newKey: '', newIdx: [], newHay: [] };
+let cxFields = LS.get('cxFields', null);   // null = mostrar todos los campos en la ficha
+let cxPickOpen = false;
+const CX = { data: null, ci: new Map(), ti: 0, idx: new Map(), hay: [], q: [], qText: '', st: '', lim: 120, sel: '', draft: {}, pulling: false, src: 'sheet', pmap: new Map(), av: '', unlock: new Set(), list: [], newKey: '', newIdx: [], newHay: [] };
 
 const cxStCls = s => { s = String(s || '').toUpperCase(); return s === 'IMPUTADO' ? 'st-ok' : (s === 'FALTA' || s === 'NO ENCONTRADO') ? 'st-bad' : (s === '' || s === 'REASIGNADO') ? 'st-na' : 'st-warn'; };
 const cxToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -27,11 +29,19 @@ function setCx(d) {
   cxApplyQueue();
   CX.hay = d.rows.map(r => r.join(' ').toLowerCase());
 }
+/* Avances de campo pendientes de imputar: se ven encima de la tabla, pero NO se escriben en la hoja CONEXIONADO */
+function cxBuildPend() {
+  const pm = new Map(), put = (cable, col, from, to, who, date, id) => {
+    const k = norm(cable); let o = pm.get(k); if (!o) { o = new Map(); pm.set(k, o); }
+    const e = o.get(col); if (e) { e.to = to; e.who = who; e.date = date; if (id) e.ids.push(id); } else o.set(col, { from, to, who, date, ids: id ? [id] : [] });
+  };
+  if (CX.data) (CX.data.log || []).forEach(e => { if (e[6] === 'Pendiente') put(e[1], e[2], e[3], e[4], e[5], e[0], e[7]); });
+  CX.q.filter(x => !x.synced).forEach(x => Object.entries(x.changes).forEach(([c, v]) => put(x.cable, c, (x.before || {})[c] || '', v, x.author, x.date.slice(0, 16).replace('T', ' '), '')));
+  CX.pmap = pm; return pm;
+}
 function cxApplyQueue() {
-  CX.q.filter(x => !x.synced).forEach(x => {
-    const i = CX.idx.get(norm(x.cable)); if (i === undefined) return;
-    for (const [k, v] of Object.entries(x.changes)) { const ci = CX.ci.get(k); if (ci !== undefined) CX.data.rows[i][ci] = v; }
-  });
+  const pm = cxBuildPend();
+  pm.forEach((o, k) => { const i = CX.idx.get(k); if (i === undefined) return; o.forEach((e, col) => { const ci = CX.ci.get(col); if (ci !== undefined) CX.data.rows[i][ci] = e.to; }); });
 }
 async function loadCx() {
   CX.q = (await DB.get('meta', 'conexQ').catch(() => null)) || [];
@@ -79,7 +89,7 @@ async function cxSave(tag, changes) {
   const it = { id: newUid(), cable: tag, changes, before, date: new Date().toISOString(), author: cloud.author(), synced: false };
   CX.q.push(it); await DB.put('meta', CX.q, 'conexQ');
   for (const [k, v] of Object.entries(changes)) CX.data.rows[i][CX.ci.get(k)] = v;
-  CX.hay[i] = CX.data.rows[i].join(' ').toLowerCase(); CX.draft = {};
+  CX.hay[i] = CX.data.rows[i].join(' ').toLowerCase(); CX.draft = {}; cxBuildPend();
   cxRepaint(); toast('Cambios guardados' + (cloud.on() && !navigator.onLine ? ' en este dispositivo. Sin cobertura: se subirán solos' : ''));
   cxSync(true);
 }
@@ -96,6 +106,7 @@ function cxHits() {
   CX.data.rows.forEach((r, i) => {
     if (CX.st) { const [a, b] = cxSides(r); if (CX.st === '(sin status)' ? (a || b) : (a !== CX.st && b !== CX.st)) return; }
     if (CX.av !== '' && String(cxAv(r)) !== CX.av) return;
+    if (CX.src === 'pend' && !CX.pmap.has(norm(r[CX.ti]))) return;
     if (q && !q.split(/\s+/).every(w => CX.hay[i].includes(w))) return;
     out.push(i);
   });
@@ -136,14 +147,15 @@ function renderCxSearch() {
   if (!$('#cxQ')) {
     root.innerHTML = `<div class="filters cx-srcs" id="cxSrcs"></div>
       <label class="field"><span id="cxQLbl">Buscar cable, tag, área u observación</span><input id="cxQ" type="search" placeholder="Parte del tag, por ejemplo CKA32-BR03" autocomplete="off" value="${esc(CX.qText)}"></label>
-      <div class="filters" id="cxChips"></div><div class="sfbar"><button class="filter add" id="cxAddAll" type="button" hidden></button></div><p class="help" id="cxCount"></p><div id="cxRes" class="rows"></div>`;
+      <div class="filters" id="cxChips"></div><div class="cx-pendbar" id="cxPendBar" hidden></div><div class="sfbar"><button class="filter add" id="cxAddAll" type="button" hidden></button></div><p class="help" id="cxCount"></p><div id="cxRes" class="rows"></div>`;
   }
-  $('#cxSrcs').innerHTML = `<button class="filter ${isNew ? '' : 'on'}" data-cxsrc="sheet">Hoja CONEXIONADO</button><button class="filter ${isNew ? 'on' : ''}" data-cxsrc="new">Nuevos del CC_SCHEDULE${nb ? ' ' + nNew.toLocaleString('es-ES') : ''}</button>`;
+  const nPend = CX.pmap.size, isPend = CX.src === 'pend';
+  $('#cxSrcs').innerHTML = `<button class="filter ${isNew || isPend ? '' : 'on'}" data-cxsrc="sheet">Hoja CONEXIONADO</button><button class="filter ${isPend ? 'on' : ''}" data-cxsrc="pend" title="Avances de campo que faltan por pasar al sistema externo">Por imputar ${nPend}</button><button class="filter ${isNew ? 'on' : ''}" data-cxsrc="new">Nuevos del CC_SCHEDULE${nb ? ' ' + nNew.toLocaleString('es-ES') : ''}</button>`;
   $('#cxQLbl').textContent = isNew ? 'Buscar cable nuevo por tag, área o sistema' : 'Buscar cable, tag, área u observación';
   const addAll = $('#cxAddAll');
   if (isNew) {
     $('#cxInfo').textContent = nb ? `${nNew.toLocaleString('es-ES')} cables nuevos` : '';
-    $('#cxChips').innerHTML = '';
+    $('#cxChips').innerHTML = ''; $('#cxPendBar').hidden = true;
     const hits = cxNewHits();
     if (!hits) { $('#cxCount').textContent = ''; addAll.hidden = true; $('#cxRes').innerHTML = `<div class="d-empty"><h2>Falta la tabla del CC_SCHEDULE</h2><p>${cloud.on() ? 'Descárgala una vez con cobertura y después funciona sin conexión.' : 'Conecta tu Google para descargarla.'}</p>${cloud.on() ? '<button class="btn primary" id="cxPullCC">Descargar CC_SCHEDULE</button>' : ''}</div>`; return; }
     const shown = hits.slice(0, CX.lim), S = CCD.src, ci = n => S.columns.findIndex(c => nname(c.name) === n), ft = ci('FROMTAG'), tt = ci('TOTAG'), st = ci('CURRENTSTATUS');
@@ -158,6 +170,7 @@ function renderCxSearch() {
     return;
   }
   const hits = cxHits(), shown = hits.slice(0, CX.lim);
+  cxPendBar(hits, isPend);
   const counts = new Map(); d.rows.forEach(r => { const [a, b] = cxSides(r); new Set([a || '(sin status)', b || '(sin status)']).forEach(s => counts.set(s, (counts.get(s) || 0) + 1)); });
   const ests = [...new Set([...(d.estados || []), ...counts.keys()])].filter(s => counts.has(s));
   const av = { 0: 0, 50: 0, 100: 0 }; d.rows.forEach(r => { av[cxAv(r)]++; });
@@ -173,7 +186,7 @@ function renderCxSearch() {
     const ft = cxCol('From_Tag'), tt = cxCol('To_Tag');
     const sub = ft !== undefined && tt !== undefined ? `${String(r[ft] || '?').replace(/^#HKF\./, '')} → ${String(r[tt] || '?').replace(/^#HKF\./, '')}` : '';
     return `<button class="row ${cls} ${norm(tag) === norm(CX.sel) ? 'sel' : ''}" data-cx-open="${esc(tag)}"><span class="t">${esc(tag)}</span>
-      <span class="m"><span class="cx-pill ${cxStCls(a)}">De: ${esc(a ? sentence(a) : 'sin status')}</span><span class="cx-pill ${cxStCls(b)}">A: ${esc(b ? sentence(b) : 'sin status')}</span>${cxInList(tag) ? '<span class="cx-pill st-ok">En la lista</span>' : ''}</span>${sub ? `<span class="m"><span>${esc(sub)}</span></span>` : ''}</button>`;
+      <span class="m">${CX.pmap.has(norm(tag)) ? '<span class="cx-pill st-warn">Por imputar</span>' : ''}<span class="cx-pill ${cxStCls(a)}">De: ${esc(a ? sentence(a) : 'sin status')}</span><span class="cx-pill ${cxStCls(b)}">A: ${esc(b ? sentence(b) : 'sin status')}</span>${cxInList(tag) ? '<span class="cx-pill st-ok">En la lista</span>' : ''}</span>${sub ? `<span class="m"><span>${esc(sub)}</span></span>` : ''}</button>`;
   }).join('') || '<p class="empty">Ningún cable coincide. Prueba con otra parte del texto o quita el filtro.</p>';
   if (hits.length > shown.length) $('#cxRes').insertAdjacentHTML('beforeend', `<button class="btn more" id="cxMore">Mostrar más (${(hits.length - shown.length).toLocaleString('es-ES')} restantes)</button>`);
 }
@@ -191,7 +204,7 @@ function openCx(tag) {
 function cxEmpty() { CX.sel = ''; $('#vBody').innerHTML = '<div class="d-empty"><h2>Ningún cable abierto</h2><p>Busca un cable y aquí verás sus datos de conexionado y podrás editar los campos verdes.</p></div>'; $('#vAddList').hidden = true; }
 function cxHistory(tag) {
   const k = norm(tag), out = [];
-  (CX.data.log || []).forEach(e => { if (norm(e[1]) === k) out.push({ date: e[0], col: e[2], from: e[3], to: e[4], who: e[5] }); });
+  (CX.data.log || []).forEach(e => { if (norm(e[1]) === k) out.push({ date: e[0], col: e[2], from: e[3], to: e[4], who: e[5], est: e[6] || '' }); });
   CX.q.filter(x => !x.synced && norm(x.cable) === k).forEach(x => Object.entries(x.changes).forEach(([c, v]) => out.push({ date: x.date.slice(0, 16).replace('T', ' '), col: c, from: (x.before || {})[c] || '', to: v, who: x.author, pend: true })));
   return out.sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -216,6 +229,7 @@ function renderCx(keepFocus) {
   const groups = []; const gmap = new Map();
   d.cols.forEach((c, ci) => {
     if (ci === CX.ti) return;
+    if (Array.isArray(cxFields) && !cxFields.includes(c.name)) return;
     const g = /^OBSERV/i.test(c.name) ? '' : (c.group || '');
     if (!gmap.has(g)) { const o = { g, cols: [] }; gmap.set(g, o); groups.push(o); }
     gmap.get(g).cols.push([c, ci]);
@@ -239,6 +253,8 @@ function renderCx(keepFocus) {
   const inCab = typeof IDX !== 'undefined' && DATA && IDX.has(norm(tag));
   $('#vBody').innerHTML = `
     <div class="d-top"><div class="marker"><span class="sleeve"></span><span class="mk-body"><b>${esc(tag)}</b></span><button class="btn small quiet copy" id="cxCopy">Copiar</button></div></div>
+    ${cxPendFicha(tag)}
+    ${cxPickHtml(d)}
     ${can ? '' : '<p class="help">Tu código solo permite leer el conexionado.</p>'}
     ${can ? '<p class="cx-key"><i class="cx-dot"></i> por llenar en campo <i class="cx-dot on"></i> ya llenado</p>' : ''}
     <div class="cx-sides">${groups.map(card).join('')}</div>
@@ -246,9 +262,44 @@ function renderCx(keepFocus) {
     ${inCab ? '<div class="btn-row"><button class="btn" id="cxToCab">Abrir en Cableado</button></div>' : ''}
     <section class="cx-hist"><h3>Historial de cambios <small class="muted">${hist.length}</small></h3>
       <p class="help">Los cambios se guardan en la hoja CONEXIONADO_LOG de tu Google Sheet, con fecha y nombre. ${cxAdm() ? 'Como administrador puedes deshacer cada cambio.' : 'Solo el administrador puede deshacer cambios.'}</p>
-      ${hist.map(h => `<div class="fs-row"><div><div><b>${esc(h.col.replace(/_/g, ' '))}</b>: ${h.from ? esc(fmtVal(h.from)) : '<i>vacío</i>'} → ${h.to ? esc(fmtVal(h.to)) : '<i>vacío</i>'}</div><small>${esc(h.date)}${h.who ? ', ' + esc(h.who) : ''}${h.pend ? ' <span class="sync wait">Pendiente de subir</span>' : ''}</small></div>${cxAdm() && can && !h.pend && cxCol(h.col) !== undefined ? `<button class="btn small quiet" data-cx-undo="${esc(h.col)}" data-v="${esc(h.from)}">Deshacer</button>` : ''}</div>`).join('') || '<p class="empty">Todavía no hay cambios hechos desde la app.</p>'}
+      ${hist.map(h => `<div class="fs-row"><div><div><b>${esc(h.col.replace(/_/g, ' '))}</b>: ${h.from ? esc(fmtVal(h.from)) : '<i>vacío</i>'} → ${h.to ? esc(fmtVal(h.to)) : '<i>vacío</i>'}</div><small>${esc(h.date)}${h.who ? ', ' + esc(h.who) : ''}${h.pend ? ' <span class="sync wait">Pendiente de subir</span>' : h.est === 'Pendiente' ? ' <span class="sync wait">Por imputar</span>' : h.est === 'Imputado' ? ' <span class="sync ok">Imputado</span>' : h.est === 'Descartado' ? ' <span class="sync">Descartado</span>' : ''}</small></div>${cxAdm() && can && !h.pend && cxCol(h.col) !== undefined ? `<button class="btn small quiet" data-cx-undo="${esc(h.col)}" data-v="${esc(h.from)}">Deshacer</button>` : ''}</div>`).join('') || '<p class="empty">Todavía no hay cambios hechos desde la app.</p>'}
     </section>`;
 }
+
+/* barra de avances por imputar: PDF para el sistema externo y marcado como imputado (solo administrador) */
+function cxPendBar(hits, on) {
+  const b = $('#cxPendBar'); if (!b) return;
+  if (!on) { b.hidden = true; return; }
+  const ids = cxPendIds(hits);
+  b.hidden = false;
+  b.innerHTML = `<p class="help">Avances reportados en campo que aún faltan por pasar al sistema externo. No modifican la hoja CONEXIONADO.</p>
+    <div class="btn-row"><button class="btn primary" id="cxPendPdf" ${hits.length ? '' : 'disabled'}>PDF de avances (${hits.length})</button>${cxAdm() ? `<button class="btn" id="cxPendDone" ${ids.length ? '' : 'disabled'}>Marcar los ${hits.length} como imputados</button>` : ''}</div>`;
+}
+function cxPendIds(hits) { const out = []; hits.forEach(i => { const o = CX.pmap.get(norm(CX.data.rows[i][CX.ti])); if (o) o.forEach(e => out.push(...e.ids)); }); return out; }
+async function cxMarcar(ids, estado) {
+  if (!ids.length) return toast('Nada que marcar: espera a que los cambios suban');
+  try { await apiPost('marcarAvances', { ids, estado, author: cloud.author() }); await pullCx(true); toast(estado === 'Descartado' ? 'Avances descartados' : 'Marcados como imputados'); }
+  catch (e) { toast('No se pudo marcar: ' + e.message, 5000); }
+}
+
+/* ---------- elegir qué campos se ven en la ficha ---------- */
+function cxPendFicha(tag) {
+  const o = CX.pmap.get(norm(tag)); if (!o) return '';
+  const ids = []; o.forEach(e => ids.push(...e.ids));
+  return `<section class="cx-pendbox"><h3>Por imputar en el sistema externo</h3>
+    ${[...o].map(([c, e]) => `<div class="fs-row"><div><b>${esc(c.replace(/_/g, ' '))}</b>: ${e.from ? esc(fmtVal(e.from)) : '<i>vacío</i>'} → <b>${e.to ? esc(fmtVal(e.to)) : '<i>vacío</i>'}</b><br><small>${esc(e.date)}${e.who ? ', ' + esc(e.who) : ''}</small></div></div>`).join('')}
+    ${cxAdm() && ids.length ? `<div class="btn-row"><button class="btn primary" data-cx-mark="${esc(tag)}">Marcar como imputado</button><button class="btn quiet" data-cx-drop="${esc(tag)}">Descartar</button></div>` : ''}</section>`;
+}
+function cxPickHtml(d) {
+  const sel = Array.isArray(cxFields) ? new Set(cxFields) : null, groups = new Map();
+  d.cols.forEach((c, ci) => { if (ci === CX.ti) return; const g = /^OBSERV/i.test(c.name) ? 'General' : (c.group === 'FROM' ? 'Origen (From)' : c.group === 'TO' ? 'Destino (To)' : (c.group || 'General')); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(c); });
+  const nShown = sel ? sel.size : d.cols.length - 1;
+  return `<details class="cx-pick" id="cxPick" ${cxPickOpen ? 'open' : ''}><summary>Elegir campos <small class="muted">${nShown} de ${d.cols.length - 1}</small></summary>
+    <div class="cx-pick-act"><button type="button" class="btn small quiet" data-cx-pk="all">Todos</button><button type="button" class="btn small quiet" data-cx-pk="ed">Solo los de campo</button><button type="button" class="btn small quiet" data-cx-pk="none">Ninguno</button></div>
+    ${[...groups].map(([g, cs]) => `<fieldset><legend>${esc(g)}</legend>${cs.map(c => `<label class="cx-pk"><input type="checkbox" data-cx-fld="${esc(c.name)}" ${!sel || sel.has(c.name) ? 'checked' : ''}><span>${esc(c.name.replace(/_/g, ' '))}</span>${c.edit ? '<i class="cx-dot" title="Campo editable"></i>' : ''}</label>`).join('')}</fieldset>`).join('')}
+  </details>`;
+}
+function cxSetFields(v) { cxFields = v; LS.set('cxFields', v); renderCx(); }
 
 /* ---------- Resumen ---------- */
 const CX_META = (typeof CFG !== 'undefined' && CFG.metaConexion) || 50;   // meta: puntas conectadas (FROM + TO) por semana
@@ -327,13 +378,17 @@ document.addEventListener('click', async e => {
   else if (t.dataset.cxsrc) { CX.src = t.dataset.cxsrc; CX.lim = 120; renderCxSearch(); }
   else if (t.dataset.cxAddnew !== undefined) { cxListToggle(t.dataset.cxAddnew, true); renderCxSearch(); }
   else if (t.id === 'cxAddAll') cxAddAllHits();
+  else if (t.id === 'cxPendPdf') cxAvancesPdf(cxHits());
+  else if (t.id === 'cxPendDone') { const h = cxHits(); if (confirm(`¿Marcar los ${h.length} cables como imputados en el sistema externo?`)) cxMarcar(cxPendIds(h), 'Imputado'); }
   else if (t.id === 'cxPullCC') { t.disabled = true; if (typeof pullCC === 'function') await pullCC(false); renderCxSearch(); }
   else if (t.dataset.cxFilter !== undefined) { CX.st = t.dataset.cxFilter; CX.av = ''; CX.src = 'sheet'; setTab('cbuscar'); }
 });
 $('#vBody').addEventListener('click', e => {
   const t = e.target.closest('button'); if (!t || !CX.sel) return;
   const tag = CX.sel;
-  if (t.id === 'cxCopy') { navigator.clipboard.writeText(tag).then(() => toast('Tag copiado'), () => toast('No se pudo copiar el tag')); }
+  if (t.dataset.cxMark !== undefined || t.dataset.cxDrop !== undefined) { const tg = t.dataset.cxMark ?? t.dataset.cxDrop, o = CX.pmap.get(norm(tg)), ids = []; if (o) o.forEach(e => ids.push(...e.ids)); if (confirm(t.dataset.cxMark !== undefined ? '¿Ya está imputado en el sistema externo?' : '¿Descartar estos avances?')) cxMarcar(ids, t.dataset.cxMark !== undefined ? 'Imputado' : 'Descartado'); }
+  else if (t.dataset.cxPk !== undefined) { const all = CX.data.cols.filter((c, ci) => ci !== CX.ti); cxPickOpen = true; cxSetFields(t.dataset.cxPk === 'all' ? null : t.dataset.cxPk === 'ed' ? all.filter(c => c.edit).map(c => c.name) : []); }
+  else if (t.id === 'cxCopy') { navigator.clipboard.writeText(tag).then(() => toast('Tag copiado'), () => toast('No se pudo copiar el tag')); }
   else if (t.id === 'cxToCab') { setTab('search'); openCable(IDX.get(norm(tag)), true); }
   else if (t.dataset.cxUndo !== undefined) { if (confirm('¿Deshacer este cambio y devolver el valor anterior?')) cxSave(tag, { [t.dataset.cxUndo]: t.dataset.v }); }
   else if (t.dataset.cxUnlock !== undefined) { if (confirm('¿Desbloquear esta punta imputada para editarla? Los cambios quedan en el historial con tu nombre.')) { CX.unlock.add(norm(tag) + '|' + t.dataset.cxUnlock); renderCx(); } }
@@ -351,6 +406,12 @@ $('#vBody').addEventListener('click', e => {
     renderCx();
   }
 });
+$('#vBody').addEventListener('change', e => {
+  const f = e.target.dataset && e.target.dataset.cxFld; if (f === undefined || !CX.data) return;
+  const all = CX.data.cols.filter((c, ci) => ci !== CX.ti).map(c => c.name), cur = new Set(Array.isArray(cxFields) ? cxFields : all);
+  e.target.checked ? cur.add(f) : cur.delete(f); cxPickOpen = true; cxSetFields(all.filter(n => cur.has(n)));
+});
+$('#vBody').addEventListener('toggle', e => { if (e.target.id === 'cxPick') cxPickOpen = e.target.open; }, true);
 $('#vBody').addEventListener('input', e => {
   const f = e.target.dataset && e.target.dataset.f; if (!f || !CX.sel) return;
   CX.draft[f] = e.target.value;
