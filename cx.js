@@ -2,7 +2,7 @@
    Las columnas con cabecera verde son editables; el resto viene con fórmulas y solo se lee.
    Filas y columnas se leen tal cual están, así que la tabla puede crecer sin tocar la app.
    Las ediciones se guardan en el teléfono, se suben solas (aunque no haya cobertura) y quedan en el historial. */
-const CX = { data: null, ci: new Map(), ti: 0, idx: new Map(), hay: [], q: [], qText: '', st: '', lim: 120, sel: '', draft: {}, pulling: false };
+const CX = { data: null, ci: new Map(), ti: 0, idx: new Map(), hay: [], q: [], qText: '', st: '', lim: 120, sel: '', draft: {}, pulling: false, src: 'sheet', av: '', unlock: new Set(), list: [], newKey: '', newIdx: [], newHay: [] };
 
 const cxStCls = s => { s = String(s || '').toUpperCase(); return s === 'IMPUTADO' ? 'st-ok' : (s === 'FALTA' || s === 'NO ENCONTRADO') ? 'st-bad' : (s === '' || s === 'REASIGNADO') ? 'st-na' : 'st-warn'; };
 const cxToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -11,8 +11,11 @@ const cxCan = () => typeof canConex === 'function' && canConex();
 const cxAdm = () => typeof cloud !== 'undefined' && cloud.admin && cloud.admin();
 const cxIsWeek = n => /SEM|WEEK/i.test(n);
 const cxGrp = c => /^OBSERV/i.test(c.name) ? '' : String(c.group || '').toUpperCase().trim();
-/* una sección FROM / TO con STATUS IMPUTADO queda bloqueada (solo la edita el administrador) */
-function cxLocked(g, r) { if (g !== 'FROM' && g !== 'TO') return false; const si = cxCol('STATUS_' + g); return si !== undefined && String(r[si] || '').trim().toUpperCase() === 'IMPUTADO'; }
+/* una punta (FROM / TO) con STATUS IMPUTADO queda bloqueada para todos. Solo un administrador la puede desbloquear a propósito */
+const cxStatCol = g => CX.data.cols.findIndex(c => nname(c.name) === 'STATUS' + g);
+function cxLocked(g, r) { if (g !== 'FROM' && g !== 'TO') return false; const si = cxStatCol(g); return si >= 0 && String(r[si] || '').trim().toUpperCase() === 'IMPUTADO'; }
+const cxUnl = (tag, g) => cxAdm() && CX.unlock.has(norm(tag) + '|' + g);
+const cxLockOn = (tag, g, r) => cxLocked(g, r) && !cxUnl(tag, g);
 function cxWeekNum(s) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); if (!m) return ''; const t = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])), dn = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - dn); return String(Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7)); }
 
 function setCx(d) {
@@ -87,15 +90,40 @@ function cxSides(r) {
   const f = cxCol('STATUS_FROM'), t = cxCol('STATUS_TO');
   return [f !== undefined ? r[f] : '', t !== undefined ? r[t] : ''];
 }
+const cxAv = r => { const [a, b] = cxSides(r); return ((String(a).toUpperCase() === 'IMPUTADO') + (String(b).toUpperCase() === 'IMPUTADO')) * 50; };
 function cxHits() {
   const q = CX.qText.trim().toLowerCase(), out = [];
   CX.data.rows.forEach((r, i) => {
     if (CX.st) { const [a, b] = cxSides(r); if (CX.st === '(sin status)' ? (a || b) : (a !== CX.st && b !== CX.st)) return; }
+    if (CX.av !== '' && String(cxAv(r)) !== CX.av) return;
     if (q && !q.split(/\s+/).every(w => CX.hay[i].includes(w))) return;
     out.push(i);
   });
   return out;
 }
+/* cables del CC_SCHEDULE (de tu disciplina) que todavía no tienen fila en CONEXIONADO */
+function cxNewBase() {
+  if (typeof CCD === 'undefined' || !CCD.src) return null;
+  const key = [CCD.data && CCD.data.hash, typeof SC !== 'undefined' && SC.hash, CX.data && CX.data.hash, CX.data && CX.data.rows.length].join('|');
+  if (CX.newKey !== key) {
+    const ti = CCD.src.tagi, ci = n => CCD.src.columns.findIndex(c => nname(c.name) === n), cols = ['CABLENUMBER', 'FROMTAG', 'TOTAG', 'FROMAREA', 'TOAREA', 'SYSTEM', 'FROMDESCRIPTION', 'TODESCRIPTION'].map(ci).filter(k => k >= 0);
+    CX.newIdx = []; CX.newHay = [];
+    CCD.src.rows.forEach((r, i) => {
+      const k = norm(r[ti]); if (!k || CX.idx.has(k)) return;
+      if (typeof SC !== 'undefined' && SC.tags && !SC.tags.has(k)) return;
+      CX.newIdx.push(i); CX.newHay.push(cols.map(c => r[c]).join(' ').toLowerCase());
+    });
+    CX.newKey = key;
+  }
+  return CX.newIdx;
+}
+function cxNewHits() {
+  const q = CX.qText.trim().toLowerCase(), out = [], base = cxNewBase(); if (!base) return null;
+  base.forEach((ri, n) => { if (!q || q.split(/\s+/).every(w => CX.newHay[n].includes(w))) out.push(ri); });
+  return out;
+}
+const cxInList = tag => CX.list.some(x => norm(x.tag) === norm(tag));
+function cxAddBtn() { const b = $('#vAddList'); if (b && $('#app').dataset.mod === 'con') b.textContent = CX.sel && cxInList(CX.sel) ? 'En la lista' : 'Añadir a la lista'; }
 function renderCxSearch() {
   const root = $('#cxSearch'); if (!root) return;
   if (!CX.data) {
@@ -103,24 +131,49 @@ function renderCxSearch() {
     root.innerHTML = `<div class="d-empty"><h2>${CX.none ? 'No hay datos de conexionado' : 'Conexionado sin descargar'}</h2><p>${CX.none ? 'Falta la pestaña CONEXIONADO en tu Google Sheet.' : cloud.on() ? 'Pulsa Actualizar cuando tengas cobertura. Después funciona sin conexión.' : 'Conecta tu Google para descargar el conexionado.'}</p>${cloud.on() ? '<button class="btn primary" id="cxPull">Descargar ahora</button>' : ''}</div>`;
     return;
   }
-  const d = CX.data, hits = cxHits(), shown = hits.slice(0, CX.lim);
+  const d = CX.data, isNew = CX.src === 'new', pend = cxPending();
+  const nb = cxNewBase(), nNew = nb ? nb.length : 0;
+  if (!$('#cxQ')) {
+    root.innerHTML = `<div class="filters cx-srcs" id="cxSrcs"></div>
+      <label class="field"><span id="cxQLbl">Buscar cable, tag, área u observación</span><input id="cxQ" type="search" placeholder="Parte del tag, por ejemplo CKA32-BR03" autocomplete="off" value="${esc(CX.qText)}"></label>
+      <div class="filters" id="cxChips"></div><div class="sfbar"><button class="filter add" id="cxAddAll" type="button" hidden></button></div><p class="help" id="cxCount"></p><div id="cxRes" class="rows"></div>`;
+  }
+  $('#cxSrcs').innerHTML = `<button class="filter ${isNew ? '' : 'on'}" data-cxsrc="sheet">Hoja CONEXIONADO</button><button class="filter ${isNew ? 'on' : ''}" data-cxsrc="new">Nuevos del CC_SCHEDULE${nb ? ' ' + nNew.toLocaleString('es-ES') : ''}</button>`;
+  $('#cxQLbl').textContent = isNew ? 'Buscar cable nuevo por tag, área o sistema' : 'Buscar cable, tag, área u observación';
+  const addAll = $('#cxAddAll');
+  if (isNew) {
+    $('#cxInfo').textContent = nb ? `${nNew.toLocaleString('es-ES')} cables nuevos` : '';
+    $('#cxChips').innerHTML = '';
+    const hits = cxNewHits();
+    if (!hits) { $('#cxCount').textContent = ''; addAll.hidden = true; $('#cxRes').innerHTML = `<div class="d-empty"><h2>Falta la tabla del CC_SCHEDULE</h2><p>${cloud.on() ? 'Descárgala una vez con cobertura y después funciona sin conexión.' : 'Conecta tu Google para descargarla.'}</p>${cloud.on() ? '<button class="btn primary" id="cxPullCC">Descargar CC_SCHEDULE</button>' : ''}</div>`; return; }
+    const shown = hits.slice(0, CX.lim), S = CCD.src, ci = n => S.columns.findIndex(c => nname(c.name) === n), ft = ci('FROMTAG'), tt = ci('TOTAG'), st = ci('CURRENTSTATUS');
+    $('#cxCount').textContent = `${hits.length.toLocaleString('es-ES')} de ${nNew.toLocaleString('es-ES')}. Son cables de tu disciplina sin fila en CONEXIONADO: al añadirlos a la lista se les ponen los datos que tienen en el CC_SCHEDULE.`;
+    addAll.hidden = !hits.length || !CX.qText.trim(); addAll.textContent = `Añadir los ${hits.length.toLocaleString('es-ES')} a la lista`;
+    $('#cxRes').innerHTML = shown.map(ri => {
+      const row = S.rows[ri], tag = row[S.tagi], on = cxInList(tag);
+      const sub = ft >= 0 && tt >= 0 ? `${String(row[ft] || '?').replace(/^#HKF\./, '')} → ${String(row[tt] || '?').replace(/^#HKF\./, '')}` : '';
+      return `<button class="row st-warn ${on ? 'sel' : ''}" data-cx-addnew="${esc(tag)}"><span class="t">${esc(tag)}</span><span class="m"><span class="cx-pill st-na">Nuevo</span>${st >= 0 && row[st] ? `<span class="cx-pill st-na">${esc(row[st])}</span>` : ''}<span class="cx-pill ${on ? 'st-ok' : 'st-warn'}">${on ? 'En la lista' : 'Añadir'}</span></span>${sub ? `<span class="m"><span>${esc(sub)}</span></span>` : ''}</button>`;
+    }).join('') || '<p class="empty">Ningún cable nuevo coincide.</p>';
+    if (hits.length > shown.length) $('#cxRes').insertAdjacentHTML('beforeend', `<button class="btn more" id="cxMore">Mostrar más (${(hits.length - shown.length).toLocaleString('es-ES')} restantes)</button>`);
+    return;
+  }
+  const hits = cxHits(), shown = hits.slice(0, CX.lim);
   const counts = new Map(); d.rows.forEach(r => { const [a, b] = cxSides(r); new Set([a || '(sin status)', b || '(sin status)']).forEach(s => counts.set(s, (counts.get(s) || 0) + 1)); });
   const ests = [...new Set([...(d.estados || []), ...counts.keys()])].filter(s => counts.has(s));
+  const av = { 0: 0, 50: 0, 100: 0 }; d.rows.forEach(r => { av[cxAv(r)]++; });
   $('#cxInfo').textContent = `${d.rows.length.toLocaleString('es-ES')} cables`;
-  const pend = cxPending();
-  if (!$('#cxQ')) {
-    root.innerHTML = `<label class="field"><span>Buscar cable, tag, área u observación</span><input id="cxQ" type="search" placeholder="Parte del tag, por ejemplo CKA32-BR03" autocomplete="off" value="${esc(CX.qText)}"></label>
-      <div class="filters" id="cxChips"></div><p class="help" id="cxCount"></p><div id="cxRes" class="rows"></div>`;
-  }
-  $('#cxChips').innerHTML = `<button class="filter ${CX.st === '' ? 'on' : ''}" data-st="">Todos ${d.rows.length}</button>` + ests.map(s => `<button class="filter ${CX.st === s ? 'on' : ''}" data-st="${esc(s)}">${esc(s === '(sin status)' ? 'Sin status' : sentence(s))} ${counts.get(s)}</button>`).join('');
+  $('#cxChips').innerHTML = `<button class="filter ${CX.st === '' && CX.av === '' ? 'on' : ''}" data-st="" data-av="">Todos ${d.rows.length}</button>`
+    + [['0', '0 %', 'ninguna punta'], ['50', '50 %', 'una punta'], ['100', '100 %', 'las dos puntas']].map(([k, n, t]) => `<button class="filter ${CX.av === k ? 'on' : ''}" data-av="${k}" title="${t} imputada">${n} ${av[k]}</button>`).join('')
+    + ests.map(s => `<button class="filter ${CX.st === s ? 'on' : ''}" data-st="${esc(s)}">${esc(s === '(sin status)' ? 'Sin status' : sentence(s))} ${counts.get(s)}</button>`).join('');
   $('#cxCount').textContent = `${hits.length.toLocaleString('es-ES')} de ${d.rows.length.toLocaleString('es-ES')}${pend ? ` · ${pend} cambio${pend > 1 ? 's' : ''} por subir` : ''}`;
+  addAll.hidden = !hits.length || !(CX.st || CX.av !== '' || CX.qText.trim()); addAll.textContent = `Añadir los ${hits.length.toLocaleString('es-ES')} a la lista`;
   $('#cxRes').innerHTML = shown.map(i => {
     const r = d.rows[i], [a, b] = cxSides(r), tag = r[CX.ti];
     const cls = (a === 'IMPUTADO' && b === 'IMPUTADO') ? 'st-ok' : [a, b].some(x => cxStCls(x) === 'st-bad') ? 'st-bad' : 'st-warn';
     const ft = cxCol('From_Tag'), tt = cxCol('To_Tag');
     const sub = ft !== undefined && tt !== undefined ? `${String(r[ft] || '?').replace(/^#HKF\./, '')} → ${String(r[tt] || '?').replace(/^#HKF\./, '')}` : '';
     return `<button class="row ${cls} ${norm(tag) === norm(CX.sel) ? 'sel' : ''}" data-cx-open="${esc(tag)}"><span class="t">${esc(tag)}</span>
-      <span class="m"><span class="cx-pill ${cxStCls(a)}">De: ${esc(a ? sentence(a) : 'sin status')}</span><span class="cx-pill ${cxStCls(b)}">A: ${esc(b ? sentence(b) : 'sin status')}</span></span>${sub ? `<span class="m"><span>${esc(sub)}</span></span>` : ''}</button>`;
+      <span class="m"><span class="cx-pill ${cxStCls(a)}">De: ${esc(a ? sentence(a) : 'sin status')}</span><span class="cx-pill ${cxStCls(b)}">A: ${esc(b ? sentence(b) : 'sin status')}</span>${cxInList(tag) ? '<span class="cx-pill st-ok">En la lista</span>' : ''}</span>${sub ? `<span class="m"><span>${esc(sub)}</span></span>` : ''}</button>`;
   }).join('') || '<p class="empty">Ningún cable coincide. Prueba con otra parte del texto o quita el filtro.</p>';
   if (hits.length > shown.length) $('#cxRes').insertAdjacentHTML('beforeend', `<button class="btn more" id="cxMore">Mostrar más (${(hits.length - shown.length).toLocaleString('es-ES')} restantes)</button>`);
 }
@@ -128,8 +181,8 @@ function renderCxSearch() {
 /* ---------- Ficha ---------- */
 function openCx(tag) {
   if (!CX.data || !cxHas(tag)) return;
-  CX.sel = tag; CX.draft = {}; current = -1; curSched = -1;
-  $('#view').classList.add('open'); $('#vAddList').hidden = true;
+  CX.sel = tag; CX.draft = {}; CX.unlock.clear(); current = -1; curSched = -1;
+  $('#view').classList.add('open'); $('#vAddList').hidden = false; cxAddBtn();
   if (typeof cam !== 'undefined') cam.paused = !isWide();
   if (!isWide() && !(history.state && history.state.detail)) history.pushState({ detail: 1 }, '');
   renderCx();
@@ -167,13 +220,13 @@ function renderCx(keepFocus) {
     if (!gmap.has(g)) { const o = { g, cols: [] }; gmap.set(g, o); groups.push(o); }
     gmap.get(g).cols.push([c, ci]);
   });
-  const cxEd = (c, r) => c.edit && can && !cxIsWeek(c.name) && (cxAdm() || !cxLocked(cxGrp(c), r));
+  const cxEd = (c, r) => c.edit && can && !cxIsWeek(c.name) && !cxLockOn(tag, cxGrp(c), r);
   groups.forEach(o => o.cols.sort((p, q) => cxEd(q[0], r) - cxEd(p[0], r)));   // primero lo editable
   groups.sort((a, b) => (a.g === '') - (b.g === ''));
   const gname = g => g === 'FROM' ? 'Origen (From)' : g === 'TO' ? 'Destino (To)' : g ? g : 'General';
-  const card = o => `<section class="cx-card ${o.g === 'FROM' ? 'from' : o.g === 'TO' ? 'to' : ''}"><h3>${esc(gname(o.g))}${cxLocked(String(o.g).toUpperCase(), r) ? ' <small class="muted">imputado' + (cxAdm() ? '' : ', bloqueado') + '</small>' : ''}</h3>${o.cols.map(([c, ci]) => {
+  const card = o => `<section class="cx-card ${o.g === 'FROM' ? 'from' : o.g === 'TO' ? 'to' : ''}"><h3>${esc(gname(o.g))}${cxLocked(String(o.g).toUpperCase(), r) ? (cxUnl(tag, String(o.g).toUpperCase()) ? ' <small class="muted">imputado, desbloqueado por administrador</small>' : ' <small class="muted">imputado, bloqueado</small>' + (cxAdm() ? ` <button type="button" class="btn small quiet" data-cx-unlock="${esc(String(o.g).toUpperCase())}">Desbloquear</button>` : '')) : ''}</h3>${o.cols.map(([c, ci]) => {
     const label = `<span class="n">${esc(c.name.replace(/_/g, ' '))}</span>`;
-    const g = cxGrp(c), lock = cxLocked(g, r) && !cxAdm();
+    const g = cxGrp(c), lock = cxLockOn(tag, g, r);
     if (cxIsWeek(c.name)) {   // la semana se calcula sola desde la fecha del mismo lado
       const fc = d.cols.findIndex(z => /^FECHA_/i.test(z.name) && cxGrp(z) === g), dv = fc >= 0 ? (CX.draft[d.cols[fc].name] !== undefined ? CX.draft[d.cols[fc].name] : r[fc]) : '', wv = cxWeekNum(dv) || r[ci];
       return `<div class="kv"><span class="l">${esc(c.letter)}</span>${label}<span class="v ${wv ? '' : 'none'}">${wv ? esc(wv) + ' <small class="muted">automática</small>' : 'Sin dato'}</span></div>`;
@@ -195,6 +248,7 @@ function renderCx(keepFocus) {
 }
 
 /* ---------- Resumen ---------- */
+const CX_META = (typeof CFG !== 'undefined' && CFG.metaConexion) || 50;   // meta: puntas conectadas (FROM + TO) por semana
 /* STATUS_CONEX = el cable está conectado en ambas puntas o no (cuenta cables, no extremos) */
 function cxConexBlock(d, n, nRows, missing) {
   const ci = cxCol('STATUS_CONEX'); if (ci === undefined || !n) return '';
@@ -222,19 +276,33 @@ function renderCxStats() {
   const falta = (A.get('FALTA') || 0) + (B.get('FALTA') || 0), pen = [...A, ...B].filter(([k]) => /PENDING|POR IMPUTAR/.test(k)).reduce((s, [, v]) => s + v, 0);
   const all = [...new Set([...(d.estados || []), ...A.keys(), ...B.keys()])].filter(s => A.has(s) || B.has(s));
   const bar = (m, s) => `<div class="cx-bar"><span class="cx-seg ${cxStCls(s === '(sin status)' ? '' : s)}" style="--w:${n ? (m.get(s) || 0) / n * 100 : 0}%"></span></div>`;
-  // imputaciones por semana (fecha de status)
-  const wk = new Map(); const isoWeek = s => { const t = new Date(s + 'T00:00:00'); if (isNaN(t)) return ''; const y = new Date(t); y.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7)); const w1 = new Date(y.getFullYear(), 0, 4); return `${y.getFullYear()}-S${String(1 + Math.round(((y - w1) / 864e5 - 3 + ((w1.getDay() + 6) % 7)) / 7)).padStart(2, '0')}`; };
-  d.rows.forEach(r => { [[sf, df], [st, dt]].forEach(([a, b]) => { if (a !== undefined && b !== undefined && r[a] === 'IMPUTADO' && r[b]) { const k = isoWeek(r[b]); if (k) wk.set(k, (wk.get(k) || 0) + 1); } }); });
-  const weeks = [...wk].sort((a, b) => a[0].localeCompare(b[0])).slice(-12), mx = Math.max(1, ...weeks.map(w => w[1]));
+  // puntas conectadas por semana (fecha de status): FROM + TO
+  const ymd = t => `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  const isoWeek = s => { const t = new Date(s + 'T00:00:00'); if (isNaN(t)) return null; const y = new Date(t); y.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7)); const w1 = new Date(y.getFullYear(), 0, 4); return { y: y.getFullYear(), w: 1 + Math.round(((y - w1) / 864e5 - 3 + ((w1.getDay() + 6) % 7)) / 7) }; };
+  const wk = new Map(), dates = [];
+  d.rows.forEach(r => { [[sf, df], [st, dt]].forEach(([a, b]) => { if (a !== undefined && b !== undefined && String(r[a]).toUpperCase() === 'IMPUTADO' && r[b]) { const k = isoWeek(r[b]); if (k) { const kk = k.y * 100 + k.w; wk.set(kk, (wk.get(kk) || 0) + 1); dates.push(r[b]); } } }); });
+  let wlist = [];
+  if (dates.length) {   // semanas seguidas, también las que no tuvieron ninguna
+    dates.sort(); const t = new Date(dates[0] + 'T00:00:00'), end = dates[dates.length - 1];
+    while (ymd(t) <= end && wlist.length < 200) { const k = isoWeek(ymd(t)); const kk = k.y * 100 + k.w; if (wlist[wlist.length - 1] !== kk) wlist.push(kk); t.setDate(t.getDate() + 7); }
+    const ke = isoWeek(end), kk2 = ke.y * 100 + ke.w; if (wlist[wlist.length - 1] !== kk2) wlist.push(kk2);
+  }
+  wlist = wlist.slice(-16);
+  const wvals = wlist.map(k => wk.get(k) || 0), META = CX_META, nOk = wvals.filter(v => v >= META).length, avg = wvals.length ? wvals.reduce((a, b) => a + b, 0) / wvals.length : 0, lastV = wvals[wvals.length - 1] || 0;
   root.innerHTML = `
     <section class="cx-hero"><div class="cx-ring" style="--p:${pct.toFixed(1)}"><b>${pct.toFixed(0)}<small>%</small></b></div>
       <div><h3>Extremos imputados</h3><p><b>${imp.toLocaleString('es-ES')}</b> de ${ext.toLocaleString('es-ES')} extremos</p><p class="muted">${both.toLocaleString('es-ES')} cables con los dos extremos imputados</p></div></section>
     <div class="kpis"><div class="kpi"><span>${hasS ? 'Cables de instrumentación' : 'Cables'}</span><b>${n.toLocaleString('es-ES')}</b>${hasS ? `<small>${inS.toLocaleString('es-ES')} ya están en CONEXIONADO</small>` : ''}</div><div class="kpi"><span>Falta</span><b>${falta}</b><small>extremos</small></div><div class="kpi"><span>Pendientes</span><b>${pen}</b><small>extremos</small></div>${missing ? `<div class="kpi"><span>Sin iniciar</span><b>${missing.toLocaleString('es-ES')}</b><small>cables sin fila en CONEXIONADO</small></div>` : ''}</div>
     ${cxConexBlock(d, n, nRows, missing)}
-    <p class="chart-t">Estado por extremo</p>
-    <div class="cx-tab">${all.map(s => `<button class="cx-line" data-cx-filter="${esc(s)}"><span class="cx-lbl"><i class="cx-dotc ${cxStCls(s === '(sin status)' ? '' : s)}"></i>${esc(s === '(sin status)' ? 'Sin status' : sentence(s))}</span>
-      <span class="cx-two"><span class="cx-side"><em>From</em>${bar(A, s)}<b>${A.get(s) || 0}</b></span><span class="cx-side"><em>To</em>${bar(B, s)}<b>${B.get(s) || 0}</b></span></span></button>`).join('')}</div>
-    ${weeks.length ? `<p class="chart-t">Imputaciones por semana</p><div class="cx-wk">${weeks.map(([k, v]) => `<div class="cx-col"><b>${v}</b><i style="--h:${v / mx * 100}%"></i><small>${esc(k.slice(5))}</small></div>`).join('')}</div>` : ''}`;
+    ${wlist.length ? `<p class="chart-t">Puntas conectadas por semana (From + To)</p>
+      <div class="kpis"><div class="kpi"><span>Última semana (S${wlist[wlist.length - 1] % 100})</span><b>${lastV}</b><small>${(lastV / META * 100).toFixed(0)} % de la meta</small></div><div class="kpi"><span>Promedio semanal</span><b>${avg.toFixed(0)}</b><small>${(avg / META * 100).toFixed(0)} % de la meta</small></div><div class="kpi"><span>Semanas con la meta cumplida</span><b>${nOk} de ${wvals.length}</b><small>meta ${META} puntas por semana</small></div></div>
+      <div class="chart" id="cxChWk"></div>
+      <div class="klg"><span><i class="sw" style="background:var(--v-good)"></i>Cumple la meta</span><span><i class="sw" style="background:var(--v-warn)"></i>Por debajo de la meta</span><span><i class="sw goalkey"></i>Meta ${META} puntas</span></div>
+      <p class="note-s">Cuenta cada punta (FROM o TO) con status IMPUTADO en la semana de su fecha de status.</p><div class="vtip" id="cxtip" hidden></div>` : '<p class="empty">Todavía no hay puntas imputadas con fecha, así que no hay avance por semana.</p>'}`;
+  if (wlist.length && typeof columnsChart === 'function') {
+    sTip = $('#cxtip');
+    columnsChart($('#cxChWk'), wlist.map(k => k % 100), [{ k: 'p', name: 'Puntas conectadas', css: '--v-good', values: wvals }], { label: 'Puntas conectadas por semana', goal: META, goalLabel: `Meta ${META}`, unit: '', colorFn: i => wvals[i] >= META ? '--v-good' : '--v-warn', extra: i => `${(wvals[i] / META * 100).toFixed(0)} % de la meta` });
+  }
 }
 
 function cxRepaint() {
@@ -252,8 +320,12 @@ document.addEventListener('click', async e => {
   if (t.id === 'cxPull') { t.disabled = true; await pullCx(false); t.disabled = false; renderCxSearch(); }
   else if (t.dataset.cxOpen !== undefined) openCx(t.dataset.cxOpen);
   else if (t.id === 'cxMore') { CX.lim += 200; renderCxSearch(); }
-  else if (t.closest('#cxChips')) { CX.st = t.dataset.st; CX.lim = 120; renderCxSearch(); }
-  else if (t.dataset.cxFilter !== undefined) { CX.st = t.dataset.cxFilter; setTab('cbuscar'); }
+  else if (t.closest('#cxChips')) { if (t.dataset.av !== undefined && t.dataset.st === undefined) CX.av = CX.av === t.dataset.av ? '' : t.dataset.av; else { CX.st = t.dataset.st || ''; if (t.dataset.av !== undefined) CX.av = t.dataset.av; } CX.lim = 120; renderCxSearch(); }
+  else if (t.dataset.cxsrc) { CX.src = t.dataset.cxsrc; CX.lim = 120; renderCxSearch(); }
+  else if (t.dataset.cxAddnew !== undefined) { cxListToggle(t.dataset.cxAddnew, true); renderCxSearch(); }
+  else if (t.id === 'cxAddAll') cxAddAllHits();
+  else if (t.id === 'cxPullCC') { t.disabled = true; if (typeof pullCC === 'function') await pullCC(false); renderCxSearch(); }
+  else if (t.dataset.cxFilter !== undefined) { CX.st = t.dataset.cxFilter; CX.av = ''; CX.src = 'sheet'; setTab('cbuscar'); }
 });
 $('#vBody').addEventListener('click', e => {
   const t = e.target.closest('button'); if (!t || !CX.sel) return;
@@ -261,6 +333,7 @@ $('#vBody').addEventListener('click', e => {
   if (t.id === 'cxCopy') { navigator.clipboard.writeText(tag).then(() => toast('Tag copiado'), () => toast('No se pudo copiar el tag')); }
   else if (t.id === 'cxToCab') { setTab('search'); openCable(IDX.get(norm(tag)), true); }
   else if (t.dataset.cxUndo !== undefined) { if (confirm('¿Deshacer este cambio y devolver el valor anterior?')) cxSave(tag, { [t.dataset.cxUndo]: t.dataset.v }); }
+  else if (t.dataset.cxUnlock !== undefined) { if (confirm('¿Desbloquear esta punta imputada para editarla? Los cambios quedan en el historial con tu nombre.')) { CX.unlock.add(norm(tag) + '|' + t.dataset.cxUnlock); renderCx(); } }
   else if (t.id === 'cxDiscard') { CX.draft = {}; renderCx(); }
   else if (t.id === 'cxSaveBtn') {
     const i = CX.idx.get(norm(tag)), ch = {};

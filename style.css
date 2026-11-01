@@ -409,11 +409,11 @@ td .x{min-width:36px;min-height:36px;border:0;background:none;color:var(--bad);f
   .toast{left:calc(50% + 120px)}
 
   /* la lista de escaneos usa todo el ancho; la ficha se abre a la derecha al pulsar una fila */
-  .app[data-tab="list"] .rail{flex:1;width:auto;min-width:0}
-  .app[data-tab="list"] .panel{max-width:none}
-  .app[data-tab="list"] .detail{display:none}
-  .app[data-tab="list"] .detail.open{display:flex;flex:0 0 min(520px,44%);border-left:1px solid var(--hair)}
-  .app[data-tab="list"] #vBack{display:inline-flex}
+  .app[data-tab="list"] .rail,.app[data-tab="clista"] .rail{flex:1;width:auto;min-width:0}
+  .app[data-tab="list"] .panel,.app[data-tab="clista"] .panel{max-width:none}
+  .app[data-tab="list"] .detail,.app[data-tab="clista"] .detail{display:none}
+  .app[data-tab="list"] .detail.open,.app[data-tab="clista"] .detail.open{display:flex;flex:0 0 min(520px,44%);border-left:1px solid var(--hair)}
+  .app[data-tab="list"] #vBack,.app[data-tab="clista"] #vBack{display:inline-flex}
 }
 @media (min-width:1200px){
   .app[data-tab="stats"] .panel{max-width:1240px;margin:0}
@@ -766,3 +766,12 @@ body{background:var(--bg) url(bg-m.jpg) center/cover fixed no-repeat}
 @media (min-width:900px){.rail{-webkit-backdrop-filter:none;backdrop-filter:none;background:color-mix(in srgb,var(--surface) 92%,transparent)}.sfpanel{background:var(--raise)}}
 @media (max-width:899px){.bar .brand-text .sub{display:none}.bar-sec{color:#C9D6DE}.side-foot .foot-info{display:none}}
 @media (max-width:899px){.appfoot{bottom:0;z-index:30}.rail-scroll{padding-bottom:calc(44px + env(safe-area-inset-bottom))}}
+
+.cx-srcs{padding-bottom:4px}
+#tab-clista .table-wrap{overflow:auto}
+#tab-clista table{width:100%;border-collapse:collapse;font-size:13px}
+
+.wk-st table{min-width:max-content}
+.wk-st th,.wk-st td{white-space:nowrap;text-align:right}
+.wk-st th:first-child,.wk-st td:first-child{text-align:left;position:sticky;left:0;background:var(--surface)}
+.wk-st tfoot td{font-weight:700;border-top:2px solid var(--hair)}

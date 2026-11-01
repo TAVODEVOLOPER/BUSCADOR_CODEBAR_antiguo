@@ -52,6 +52,8 @@
         <summary><i class="pip"></i>Conexionado</summary>
         <p class="ssub">Consulta</p>
         <button class="snav" data-tab="cbuscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Buscar</span></button>
+        <p class="ssub">Trabajo</p>
+        <button class="snav" data-tab="clista"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>Lista</span><b class="count cxcount" data-n="0">0</b></button>
         <p class="ssub">Avance</p>
         <button class="snav" data-tab="cresumen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>Resumen</span></button>
       </details>
@@ -245,6 +247,17 @@
         <section id="tab-cbuscar" class="panel" aria-label="Conexionado: buscar">
           <h2 class="ptitle">Conexionado <small id="cxInfo"></small></h2>
           <div id="cxSearch"></div>
+        </section>
+        <section id="tab-clista" class="panel" aria-label="Conexionado: lista de trabajo">
+          <h2 class="ptitle">Lista de conexionado</h2>
+          <div class="toolbar">
+            <button class="btn primary" id="cxBtnPdf">Lista de trabajo en PDF</button>
+            <button class="btn" id="cxBtnXlsx">Descargar Excel</button>
+            <button class="btn" id="cxBtnSheet">Enviar a Google Sheet</button>
+            <button class="btn danger" id="cxBtnClear">Vaciar lista</button>
+          </div>
+          <p class="help" id="cxListHint"></p>
+          <div class="table-wrap"><table id="cxListTable"></table></div>
         </section>
         <section id="tab-cresumen" class="panel" aria-label="Conexionado: resumen">
           <h2 class="ptitle">Resumen de conexionado <small id="cxInfo2"></small></h2>
@@ -477,5 +490,6 @@
 <script src="viewer.js"></script>
 <script src="library.js"></script>
 <script src="cx.js"></script>
+<script src="cxlist.js"></script>
 </body>
 </html>

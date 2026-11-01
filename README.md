@@ -174,3 +174,11 @@ La clave `DRAGADOS-ADMIN` va en config.js, que es público en GitHub Pages: no e
 - Una nota o foto solo la borra su autor o un administrador.
 - La app declara una política de seguridad de contenido (CSP): solo carga código de su propio sitio y solo habla con script.google.com.
 - Recomendación: usa códigos de personal largos (8 o más caracteres, no consecutivos) y desactiva con NO a quien deje el proyecto.
+
+### Conexionado: lista, bloqueo y metas (v1.20.0)
+- Una punta (FROM o TO) con STATUS IMPUTADO queda bloqueada para todos. Solo un administrador la puede desbloquear con el botón Desbloquear de esa tarjeta; el servidor sigue rechazando a quien no es administrador.
+- Buscar en Conexionado: filtros 0 %, 50 % y 100 % (cuántas puntas están imputadas) y la opción de cables nuevos del CC_SCHEDULE (los de tu disciplina que aún no tienen fila en CONEXIONADO).
+- Lista de conexionado (menú Conexionado, Trabajo, Lista): se arma con Añadir o Añadir los N. Se manda a Excel, a la pestaña LISTA_CONEXIONADO del Sheet (nombre cambiable con `cxSheetName`) o a un PDF de trabajo. Los cables nuevos llevan los datos del CC_SCHEDULE que coinciden por nombre con las columnas de CONEXIONADO.
+- Las listas solo pueden escribir en pestañas ESCANEOS* o LISTA_*.
+- Resumen de Conexionado: sin Estado por extremo; el gráfico semanal cuenta puntas conectadas (From + To) con meta de 50 (`metaConexion` en config.js).
+- Resumen de Cableado: la meta es 3000 m por semana (tendido + coil). Después de Metros por semana hay una tabla por semana con cables por status actual y metros de Tendido y Coil.

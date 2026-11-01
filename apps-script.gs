@@ -376,6 +376,10 @@ function getConex_(clientHash) {
   if (clientHash && clientHash === hash) return { ok: true, same: true, hash: hash };
   return { ok: true, hash: hash, cols: cols, rows: rows, log: log, estados: estados, generado: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm') };
 }
+/* las listas de escaneos solo pueden ir a pestañas ESCANEOS* o LISTA_*: nunca a la tabla, personal, notas, etc. */
+function guardSheet_(name) {
+  if (!/^(ESCANEOS|LISTA)[\w ]*$/i.test(String(name))) throw new Error('La pestaña de la lista debe llamarse ESCANEOS o empezar por LISTA_ (no se permite ' + name + ')');
+}
 function isoWeekNum_(d) {
   var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), dn = t.getUTCDay() || 7;
   t.setUTCDate(t.getUTCDate() + 4 - dn);
@@ -392,7 +396,7 @@ function setConex_(p) {
   // reglas: una sección (FROM / TO) con STATUS IMPUTADO queda bloqueada, y solo el administrador puede borrar datos
   Object.keys(p.changes).forEach(function (name) {
     var ci0 = L.head.indexOf(name); if (ci0 < 0) return;
-    var g0 = String(L.grp[ci0] || '').toUpperCase().trim(), si = L.head.indexOf('STATUS_' + g0);
+    var g0 = String(L.grp[ci0] || '').toUpperCase().trim(), si = L.head.findIndex(function (h) { return String(h).toUpperCase().replace(/[\s_]+/g, '') === 'STATUS' + g0; });
     if (!p.adm && si >= 0 && (g0 === 'FROM' || g0 === 'TO') && String(cur[si]).trim().toUpperCase() === 'IMPUTADO')
       throw new Error('La sección ' + g0 + ' ya está IMPUTADA: solo el administrador puede editarla');
     var nv = String(p.changes[name] == null ? '' : p.changes[name]).trim(), old = cur[ci0];
@@ -713,11 +717,13 @@ function write_(p) {
       return setConex_(p);
 
     case 'clearScans':
+      guardSheet_(p.sheet || 'ESCANEOS');
       var shc = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(p.sheet || 'ESCANEOS');
       if (shc && shc.getLastRow() > 1) shc.getRange(2, 1, shc.getLastRow() - 1, Math.max(1, shc.getLastColumn())).clearContent();
       return { ok: true };
 
     case 'scans':
+      guardSheet_(p.sheet || 'ESCANEOS');
       var ss = SpreadsheetApp.getActiveSpreadsheet();
       var name2 = p.sheet || 'ESCANEOS';
       var s2 = ss.getSheetByName(name2) || ss.insertSheet(name2);

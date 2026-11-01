@@ -105,7 +105,7 @@ const pc = (a, b) => b ? (a * 100 / b).toLocaleString('es-ES', { minimumFraction
 
 function statsData() {
   const zero = () => ({ tend: 0, curso: 0, inc: 0, otros: 0 });
-  const table = zero(), inSched = zero(), noWeek = zero(), wk = new Map(), statuses = new Map(), mw = { all: new Map(), tend: new Map(), coil: new Map() }, mT = { all: 0, tend: 0, coil: 0 }, mC = { all: 0, tend: 0, coil: 0 }, mNW = { all: 0, tend: 0, coil: 0 };
+  const table = zero(), inSched = zero(), noWeek = zero(), wk = new Map(), statuses = new Map(), mw = { all: new Map(), tend: new Map(), coil: new Map() }, wst = new Map(), mT = { all: 0, tend: 0, coil: 0 }, mC = { all: 0, tend: 0, coil: 0 }, mNW = { all: 0, tend: 0, coil: 0 };
   let kWork = 0, kCoil = 0;
   const RI = COL.has('Released_CT_2') ? COL.get('Released_CT_2') : -1;
   let notIn = 0;
@@ -118,6 +118,7 @@ function statsData() {
     statuses.set(stName, (statuses.get(stName) || 0) + 1);
     if (SC.tags) { if (SC.tags.has(norm(r[TAGI]))) inSched[k]++; else { notIn++; continue; } }   // fuera del CC_SCHEDULE no cuenta
     const w = WI >= 0 ? parseInt(r[WI], 10) : 0;
+    { const wk0 = w > 0 ? w : 0; if (!wst.has(wk0)) wst.set(wk0, new Map()); const mm0 = wst.get(wk0); mm0.set(stName, (mm0.get(stName) || 0) + 1); }
     const stU = String(STATI >= 0 ? r[STATI] : '').trim().toUpperCase();
     if (RI >= 0 && String(r[RI]).trim().toUpperCase() === 'Y') { if (stU === 'WORKING') kWork++; else if (stU === 'COIL') kCoil++; }
     const mk = MI >= 0 ? meterKind(stU) : '';
@@ -138,7 +139,7 @@ function statsData() {
   const weeks = [];
   const wkeys = [...wk.keys(), ...mw.all.keys()];
   if (wkeys.length) { const a = Math.min(...wkeys), b = Math.max(...wkeys); for (let w = a; w <= b; w++) weeks.push(w); }
-  return { statuses: [...statuses.entries()].sort((a, b) => b[1] - a[1]), mw, mT, mC, mNW, kWork, kCoil, table, counted, total, hasSched, notIn, started, notStarted: Math.max(0, total - started), tableTotal: DATA.rows.length, weeks, wk, noWeek, zero };
+  return { wst, statuses: [...statuses.entries()].sort((a, b) => b[1] - a[1]), mw, mT, mC, mNW, kWork, kCoil, table, counted, total, hasSched, notIn, started, notStarted: Math.max(0, total - started), tableTotal: DATA.rows.length, weeks, wk, noWeek, zero };
 }
 
 /* ---------- Dibujo ---------- */
@@ -266,6 +267,20 @@ const WEEK_MODES = [
   { k: 'tend', name: 'Tendidos' }, { k: 'curso', name: 'En curso' }, { k: 'inc', name: 'Incidencias' }, { k: 'all', name: 'Todos los estados' },
 ];
 
+/* por semana: cuántos cables hay en cada STATUS ACTUAL y los metros de Tendido y Coil (semana = la de su último estado) */
+function wkStatusHtml(d) {
+  const sts = d.statuses.map(([n]) => n), rows = [...d.weeks]; if (d.wst.has(0)) rows.push(0);
+  if (!rows.length) return '';
+  const cell = (w, n) => (d.wst.get(w) || new Map()).get(n) || 0;
+  const tot = w => sts.reduce((a, n) => a + cell(w, n), 0), mt = w => d.mw.tend.get(w) || 0, mc = w => d.mw.coil.get(w) || 0;
+  const head = `<thead><tr><th>Semana</th>${sts.map(n => `<th>${esc(n)}</th>`).join('')}<th>Total cables</th><th>Tendido (m)</th><th>Coil (m)</th></tr></thead>`;
+  const body = rows.map(w => `<tr><td>${w ? 'S' + w : 'Sin semana'}</td>${sts.map(n => `<td>${cell(w, n) ? nf(cell(w, n)) : '–'}</td>`).join('')}<td><b>${nf(tot(w))}</b></td><td>${w ? nf(mt(w)) : nf(d.mNW.tend)}</td><td>${w ? nf(mc(w)) : nf(d.mNW.coil)}</td></tr>`).join('');
+  const foot = `<tfoot><tr><td>Total</td>${sts.map(n => `<td>${nf(rows.reduce((a, w) => a + cell(w, n), 0))}</td>`).join('')}<td>${nf(rows.reduce((a, w) => a + tot(w), 0))}</td><td>${nf(d.mT.tend)}</td><td>${nf(d.mT.coil)}</td></tr></tfoot>`;
+  return `<p class="chart-t">Cables por status actual y metros, por semana</p>
+    <p class="note-s">Cada cable cuenta en la semana de su último estado. Los metros son los de la columna de metros, solo de cables en TENDIDO y COIL.</p>
+    <div class="table-wrap wk-st"><table>${head}<tbody>${body}</tbody>${foot}</table></div>`;
+}
+
 function renderStats() {
   const host = $('#stats'); if (!host) return;
   if (!DATA) { host.innerHTML = '<p class="empty">Todavía no hay tabla cargada. Conecta tu Google en Ajustes.</p>'; return; }
@@ -280,7 +295,6 @@ function renderStats() {
     const inTable = it.k === 'none' ? null : d.counted[it.k];
     return `<tr><td>${sw(it.css)}${esc(it.name)}</td><td>${nf(it.v)}</td><td>${pc(it.v, d.total)}</td>${d.hasSched ? `<td>${inTable == null ? '–' : pc(inTable, d.started)}</td>` : ''}</tr>`;
   }).join('');
-  const stRows = d.statuses.filter(([n]) => !/^PENDING/i.test(n)).map(([n, v]) => { const c = catOf(n); return `<tr><td>${sw(c.css)}${esc(n)}</td><td>${nf(v)}</td><td>${pc(v, d.tableTotal)}</td></tr>`; }).join('');
 
   // metros por semana
   const meta = metaSemanal(), mcol = metrosCol();
@@ -336,17 +350,13 @@ function renderStats() {
       <tbody>${legendRows}</tbody>
     </table>
     ${d.hasSched && d.notIn ? `<p class="note-s">${nf(d.notIn)} ${d.notIn === 1 ? 'cable de la tabla no figura' : 'cables de la tabla no figuran'} en el ${esc(sn)} y no se cuentan en el avance ni en los metros.</p>` : ''}
-    <h3 class="h3b">Estados en la tabla</h3>
-    <table class="legend">
-      <thead><tr><th>Status actual</th><th>Cables</th><th>% de la tabla</th></tr></thead>
-      <tbody>${stRows}</tbody>
-    </table>
   </section>
 
   <section class="viz">
     <h3>Por semana</h3>
     ${d.weeks.length ? `
     <div class="wk">${mHtml}</div>
+    <div class="wk">${wkStatusHtml(d)}</div>
     <div class="wk">
       <p class="chart-t">Cables tendidos acumulados${d.hasSched ? ' (sobre ' + nf(d.total) + ' cables)' : ''}</p>
       <div class="chart" id="chCum"></div>

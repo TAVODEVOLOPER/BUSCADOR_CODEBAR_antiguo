@@ -471,7 +471,7 @@ async function switchCam() {
 })();
 
 /* ---------- Pestañas ---------- */
-const TAB_MOD = { scan: 'cab', search: 'cab', list: 'cab', routes: 'cab', library: 'cab', stats: 'cab', cbuscar: 'con', cresumen: 'con' };
+const TAB_MOD = { scan: 'cab', search: 'cab', list: 'cab', routes: 'cab', library: 'cab', stats: 'cab', cbuscar: 'con', clista: 'con', cresumen: 'con' };
 const MOD_DEFAULT = { cab: 'scan', con: 'cbuscar' };
 $$('.sgrp').forEach(g => g.addEventListener('toggle', () => { if (g.open) $$('.sgrp').forEach(o => { if (o !== g) o.open = false; }); }));
 function navOpen(v) { $('#app').classList.toggle('nav-open', !!v); $('#btnNav').setAttribute('aria-expanded', !!v); }
@@ -492,6 +492,7 @@ function setTab(name) {
   if (name === 'routes' && typeof renderRoutes === 'function') renderRoutes();
   if (name === 'cbuscar' && typeof renderCxSearch === 'function') renderCxSearch();
   if (name === 'cresumen' && typeof renderCxStats === 'function') renderCxStats();
+  if (name === 'clista' && typeof cxListPaint === 'function') cxListPaint();
   if (name === 'library' && typeof renderLibrary === 'function') renderLibrary();
 }
 $$('.tab,.snav[data-tab]').forEach(t => { t.dataset.mod = TAB_MOD[t.dataset.tab]; t.addEventListener('click', () => setTab(t.dataset.tab)); });
@@ -1150,14 +1151,20 @@ $('#btnClear').addEventListener('click', async () => {
 /* ---------- Lista de trabajo en PDF ---------- */
 const PDF_NOTAS = '__NOTAS__';
 const PDF_DEFAULT = [['Installer'], ['CABLE_NUMBER'], ['Released_CT'], ['Cable_Routing_Produc', 'Cable_Routing_Product'], ['Cable_Routing_Coil Total'], ['MiniRuta_From'], ['MiniRuta_to'], [PDF_NOTAS]];
+let pdfMode = 'cab';   // 'cab' = lista de Cableado, 'con' = lista de Conexionado
+const pdfItems = () => pdfMode === 'con' ? CX.list : scanList;
+const pdfKey = () => pdfMode === 'con' ? 'pdfColsCx' : 'pdfCols';
+const PDF_DEFAULT_CX = ['CABLE_NUMBER', 'From_Tag', 'From_Area', 'Subc_Conn_From', 'STATUS_FROM', 'To_Tag', 'To_Area', 'Subc_Conn_To', 'STATUS_TO', 'Avance', PDF_NOTAS];
+const pdfVal = (x, n) => pdfMode === 'con' ? cxNice(n === 'CABLE_NUMBER' ? x.tag : cxItemVal(x, n)) : listVal(x.tag, n);
 function pdfNames() {   // columnas de la tabla y, además, las del CC_SCHEDULE que la tabla no tiene
+  if (pdfMode === 'con') return ['Avance', 'Origen', ...(CX.data ? CX.data.cols.map(c => c.name) : [])];
   const names = DATA.columns.map(c => c.name), seen = new Set(names.map(nname));
   if (SC.pendData) SC.pendData.columns.forEach(c => { if (c.name && !seen.has(nname(c.name))) { names.push(c.name); seen.add(nname(c.name)); } });
   return names;
 }
 function pdfDefaults() {
   const names = pdfNames(), out = [];
-  PDF_DEFAULT.forEach(alts => {
+  (pdfMode === 'con' ? PDF_DEFAULT_CX.map(n => [n]) : PDF_DEFAULT).forEach(alts => {
     if (alts[0] === PDF_NOTAS) { out.push(PDF_NOTAS); return; }
     for (const al of alts) { const f = names.find(n => nname(n) === nname(al)); if (f) { out.push(f); break; } }
   });
@@ -1165,17 +1172,17 @@ function pdfDefaults() {
 }
 let pdfSel = [];
 function openPdf() {
-  if (!scanList.length) return toast('La lista está vacía. Añade cables desde Buscar o escaneándolos.');
-  const saved = LS.get('pdfCols', null), names = new Set([...pdfNames(), PDF_NOTAS]);
+  if (!pdfItems().length) return toast('La lista está vacía. Añade cables desde Buscar o escaneándolos.');
+  const saved = LS.get(pdfKey(), null), names = new Set([...pdfNames(), PDF_NOTAS]);
   pdfSel = Array.isArray(saved) && saved.length ? saved.filter(n => names.has(n)) : pdfDefaults();
   if (!pdfSel.length) pdfSel = pdfDefaults();
-  $('#pTitle').value = LS.get('pdfTitle', 'Lista de trabajo');
+  $('#pTitle').value = LS.get(pdfMode === 'con' ? 'pdfTitleCx' : 'pdfTitle', pdfMode === 'con' ? 'Lista de trabajo de conexionado' : 'Lista de trabajo');
   $('#pdfModal').hidden = false; renderPdfPicker();
 }
 function renderPdfPicker() {
   const f = nname($('#pFilter').value), all = [PDF_NOTAS, ...pdfNames()];
   const label = n => n === PDF_NOTAS ? 'NOTAS (columna en blanco para observaciones)' : n;
-  $('#pHelp').textContent = `${scanList.length.toLocaleString('es-ES')} cables. Orden de columnas: ${pdfSel.map(n => n === PDF_NOTAS ? 'NOTAS' : n).join(' / ') || 'ninguna'}`;
+  $('#pHelp').textContent = `${pdfItems().length.toLocaleString('es-ES')} cables. Orden de columnas: ${pdfSel.map(n => n === PDF_NOTAS ? 'NOTAS' : n).join(' / ') || 'ninguna'}`;
   $('#pList').innerHTML = all.filter(n => !f || nname(label(n)).includes(f)).map(n => {
     const k = pdfSel.indexOf(n);
     return `<label class="citem"><input type="checkbox" data-n="${esc(n)}" ${k >= 0 ? 'checked' : ''}>${k >= 0 ? `<span class="ord">${k + 1}</span>` : '<b></b>'}<span>${esc(label(n))}</span></label>`;
@@ -1184,21 +1191,21 @@ function renderPdfPicker() {
 $('#pList').addEventListener('change', e => {
   const n = e.target.dataset.n; if (n === undefined) return;
   if (e.target.checked) { if (!pdfSel.includes(n)) pdfSel.push(n); } else pdfSel = pdfSel.filter(x => x !== n);
-  LS.set('pdfCols', pdfSel); renderPdfPicker();
+  LS.set(pdfKey(), pdfSel); renderPdfPicker();
 });
 $('#pFilter').addEventListener('input', renderPdfPicker);
-$('#pDefault').addEventListener('click', () => { pdfSel = pdfDefaults(); LS.set('pdfCols', pdfSel); renderPdfPicker(); });
+$('#pDefault').addEventListener('click', () => { pdfSel = pdfDefaults(); LS.set(pdfKey(), pdfSel); renderPdfPicker(); });
 $('#pClose').addEventListener('click', () => { $('#pdfModal').hidden = true; });
-$('#btnPdf').addEventListener('click', () => DATA ? openPdf() : toast('Todavía no hay tabla cargada'));
+$('#btnPdf').addEventListener('click', () => { pdfMode = 'cab'; DATA ? openPdf() : toast('Todavía no hay tabla cargada'); });
 const loadScript = src => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ko(new Error('no se pudo cargar ' + src)); document.head.appendChild(s); });
 $('#pGo').addEventListener('click', async () => {
   if (!pdfSel.length) return toast('Elige al menos una columna');
   try {
     $('#pGo').disabled = true; toast('Preparando el PDF', 8000);
     if (!(window.jspdf && window.jspdf.jsPDF)) { await loadScript('vendor/jspdf.umd.min.js'); await loadScript('vendor/jspdf.plugin.autotable.min.js'); }
-    const title = $('#pTitle').value.trim() || 'Lista de trabajo'; LS.set('pdfTitle', title);
+    const title = $('#pTitle').value.trim() || 'Lista de trabajo'; LS.set(pdfMode === 'con' ? 'pdfTitleCx' : 'pdfTitle', title);
     const head = pdfSel.map(n => n === PDF_NOTAS ? 'NOTAS' : n);
-    const body = scanList.map(x => pdfSel.map(n => n === PDF_NOTAS ? '' : fmtVal(String(listVal(x.tag, n) ?? '').trim())));
+    const items = pdfItems(), body = items.map(x => pdfSel.map(n => n === PDF_NOTAS ? '' : fmtVal(String(pdfVal(x, n) ?? '').trim())));
     const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
     const stampTxt = new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
@@ -1212,11 +1219,11 @@ $('#pGo').addEventListener('click', async () => {
       rowPageBreak: 'avoid',
       didDrawPage: d => {
         doc.setFontSize(14); doc.setTextColor(16, 32, 48); doc.text(title, 8, 11);
-        doc.setFontSize(8.5); doc.setTextColor(90, 100, 110); doc.text(`${stampTxt}  |  ${scanList.length} cables`, 8, 16.5);
+        doc.setFontSize(8.5); doc.setTextColor(90, 100, 110); doc.text(`${stampTxt}  |  ${items.length} cables`, 8, 16.5);
         doc.text(`Pagina ${d.pageNumber}`, W - 8, H - 5, { align: 'right' });
       },
     });
-    doc.save(`lista_de_trabajo_${stamp()}.pdf`);
+    doc.save(`${pdfMode === 'con' ? 'lista_conexionado' : 'lista_de_trabajo'}_${stamp()}.pdf`);
     toast('PDF descargado', 3000);
   } catch (e) { toast('No se pudo crear el PDF: ' + e.message, 5000); }
   finally { $('#pGo').disabled = false; }
