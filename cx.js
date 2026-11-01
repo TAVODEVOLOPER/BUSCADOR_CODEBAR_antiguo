@@ -10,9 +10,9 @@ const cxCol = n => CX.ci.get(n);
 const cxCan = () => typeof canConex === 'function' && canConex();
 const cxAdm = () => typeof cloud !== 'undefined' && cloud.admin && cloud.admin();
 const cxIsWeek = n => /SEM|WEEK/i.test(n);
-const cxGrp = c => /^OBSERV/i.test(c.name) ? '' : String(c.group || '').toUpperCase();
+const cxGrp = c => /^OBSERV/i.test(c.name) ? '' : String(c.group || '').toUpperCase().trim();
 /* una sección FROM / TO con STATUS IMPUTADO queda bloqueada (solo la edita el administrador) */
-function cxLocked(g, r) { if (g !== 'FROM' && g !== 'TO') return false; const si = cxCol('STATUS_' + g); return si !== undefined && r[si] === 'IMPUTADO'; }
+function cxLocked(g, r) { if (g !== 'FROM' && g !== 'TO') return false; const si = cxCol('STATUS_' + g); return si !== undefined && String(r[si] || '').trim().toUpperCase() === 'IMPUTADO'; }
 function cxWeekNum(s) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); if (!m) return ''; const t = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])), dn = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - dn); return String(Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7)); }
 
 function setCx(d) {

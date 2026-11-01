@@ -350,8 +350,8 @@ function setConex_(p) {
   // reglas: una sección (FROM / TO) con STATUS IMPUTADO queda bloqueada, y solo el administrador puede borrar datos
   Object.keys(p.changes).forEach(function (name) {
     var ci0 = L.head.indexOf(name); if (ci0 < 0) return;
-    var g0 = String(L.grp[ci0] || '').toUpperCase(), si = L.head.indexOf('STATUS_' + g0);
-    if (!p.adm && si >= 0 && (g0 === 'FROM' || g0 === 'TO') && String(cur[si]).trim() === 'IMPUTADO')
+    var g0 = String(L.grp[ci0] || '').toUpperCase().trim(), si = L.head.indexOf('STATUS_' + g0);
+    if (!p.adm && si >= 0 && (g0 === 'FROM' || g0 === 'TO') && String(cur[si]).trim().toUpperCase() === 'IMPUTADO')
       throw new Error('La sección ' + g0 + ' ya está IMPUTADA: solo el administrador puede editarla');
     var nv = String(p.changes[name] == null ? '' : p.changes[name]).trim(), old = cur[ci0];
     if (!p.adm && !nv && String(old).trim() !== '') throw new Error('Solo el administrador puede borrar datos (' + name + ')');
