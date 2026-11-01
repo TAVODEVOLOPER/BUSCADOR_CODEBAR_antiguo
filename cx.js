@@ -136,11 +136,16 @@ function cxHistory(tag) {
   CX.q.filter(x => !x.synced && norm(x.cable) === k).forEach(x => Object.entries(x.changes).forEach(([c, v]) => out.push({ date: x.date.slice(0, 16).replace('T', ' '), col: c, from: (x.before || {})[c] || '', to: v, who: x.author, pend: true })));
   return out.sort((a, b) => b.date.localeCompare(a.date));
 }
+/* STATUS_FROM y STATUS_TO usan la lista del Sheet; otros STATUS (por ejemplo STATUS_CONEX) usan los valores que ya tiene su columna */
+function cxOptions(name) {
+  if (/^STATUS_(FROM|TO)$/i.test(name)) return CX.data.estados || [];
+  const ci = cxCol(name); return [...new Set(CX.data.rows.map(r => r[ci]).filter(Boolean))].sort();
+}
 function cxInput(c, v, can) {
   const val = CX.draft[c.name] !== undefined ? CX.draft[c.name] : v;
   if (!c.edit || !can) return `<span class="v ${v ? '' : 'none'}">${v ? esc(fmtVal(v)) : 'Sin dato'}</span>`;
   const id = 'cxf_' + c.name;
-  if (/^STATUS/i.test(c.name)) return `<div class="chips cx-opts" data-f="${esc(c.name)}">${['', ...(CX.data.estados || [])].map(s => `<button type="button" class="filter ${val === s ? 'on' : ''}" data-cx-set="${esc(s)}">${s ? esc(sentence(s)) : 'Vacío'}</button>`).join('')}</div>`;
+  if (/^STATUS/i.test(c.name)) return `<div class="chips cx-opts" data-f="${esc(c.name)}">${['', ...cxOptions(c.name)].map(s => `<button type="button" class="filter ${val === s ? 'on' : ''}" data-cx-set="${esc(s)}">${s ? esc(sentence(s)) : 'Vacío'}</button>`).join('')}</div>`;
   if (/^FECHA/i.test(c.name)) return `<input id="${id}" data-f="${esc(c.name)}" type="date" value="${esc(val)}">`;
   if (/OBSERV/i.test(c.name)) return `<textarea id="${id}" data-f="${esc(c.name)}" rows="3">${esc(val)}</textarea>`;
   return `<input id="${id}" data-f="${esc(c.name)}" type="text" inputmode="text" value="${esc(val)}" autocomplete="off">`;
@@ -178,6 +183,17 @@ function renderCx(keepFocus) {
 }
 
 /* ---------- Resumen ---------- */
+/* STATUS_CONEX = el cable está conectado en ambas puntas o no (cuenta cables, no extremos) */
+function cxConexBlock(d, n) {
+  const ci = cxCol('STATUS_CONEX'); if (ci === undefined || !n) return '';
+  const m = new Map(); d.rows.forEach(r => { const s = r[ci] || '(sin status)'; m.set(s, (m.get(s) || 0) + 1); });
+  const list = [...m].sort((a, b) => b[1] - a[1]);
+  return `<p class="chart-t">Conexión del cable (ambas puntas)</p>
+    <div class="cx-tab">
+    ${list.map(([k, v]) => `<div class="cx-line"><span class="cx-lbl"><i class="cx-dotc ${cxStCls(k === '(sin status)' ? '' : k)}"></i>${esc(k === '(sin status)' ? 'Sin status' : sentence(k))}</span><span class="cx-two"><span class="cx-side">${bar2(v, n, k)}<b>${v}</b> <small>${(v / n * 100).toFixed(0)}%</small></span></span></div>`).join('')}</div>`;
+}
+function bar2(v, n, k) { return `<div class="cx-bar"><span class="cx-seg ${k ? cxStCls(k === '(sin status)' ? '' : k) : ''}" style="--w:${n ? v / n * 100 : 0}%"></span></div>`; }
+
 function renderCxStats() {
   const root = $('#cxStats'); if (!root) return;
   if (!CX.data) { $('#cxInfo2').textContent = ''; root.innerHTML = '<div class="d-empty"><h2>Sin datos de conexionado</h2><p>Descarga el conexionado desde la pestaña Buscar.</p></div>'; return; }
@@ -198,6 +214,7 @@ function renderCxStats() {
     <section class="cx-hero"><div class="cx-ring" style="--p:${pct.toFixed(1)}"><b>${pct.toFixed(0)}<small>%</small></b></div>
       <div><h3>Extremos imputados</h3><p><b>${imp.toLocaleString('es-ES')}</b> de ${ext.toLocaleString('es-ES')} extremos</p><p class="muted">${both.toLocaleString('es-ES')} cables con los dos extremos imputados</p></div></section>
     <div class="kpis"><div class="kpi"><span>Cables</span><b>${n.toLocaleString('es-ES')}</b></div><div class="kpi"><span>Falta</span><b>${falta}</b><small>extremos</small></div><div class="kpi"><span>Pendientes</span><b>${pen}</b><small>extremos</small></div></div>
+    ${cxConexBlock(d, n)}
     <p class="chart-t">Estado por extremo</p>
     <div class="cx-tab">${all.map(s => `<button class="cx-line" data-cx-filter="${esc(s)}"><span class="cx-lbl"><i class="cx-dotc ${cxStCls(s === '(sin status)' ? '' : s)}"></i>${esc(s === '(sin status)' ? 'Sin status' : sentence(s))}</span>
       <span class="cx-two"><span class="cx-side"><em>From</em>${bar(A, s)}<b>${A.get(s) || 0}</b></span><span class="cx-side"><em>To</em>${bar(B, s)}<b>${B.get(s) || 0}</b></span></span></button>`).join('')}</div>

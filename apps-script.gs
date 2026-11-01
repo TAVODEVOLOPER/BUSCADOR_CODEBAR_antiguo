@@ -285,6 +285,12 @@ function conexLayout_(sh) {
     for (var c2 = 0; c2 < last; c2++) { var gv = String(v[hr - 1][c2]).trim(); if (gv && !grp[c2]) grp[c2] = gv; }
     if (!merged) { var gg = ''; for (var c3 = 0; c3 < last; c3++) { if (grp[c3]) gg = grp[c3]; else if (gg && !/^OBSERV/i.test(head[c3])) grp[c3] = gg; } }
   }
+  // sin fila de grupos (o columnas fuera de ella): se deduce del nombre (From / To)
+  for (var c4 = 0; c4 < last; c4++) {
+    if (grp[c4] || /^OBSERV/i.test(head[c4])) continue;
+    var nm = head[c4].toLowerCase();
+    if (/from/.test(nm)) grp[c4] = 'FROM'; else if (/(^|[_ ])to($|[_ ])|terminatedto/.test(nm)) grp[c4] = 'TO';
+  }
   var edit = [], any = false;
   try {
     var bg = sh.getRange(hr + 1, 1, 1, last).getBackgrounds()[0];
@@ -339,7 +345,7 @@ function setConex_(p) {
     var ci = L.head.indexOf(name);
     if (ci < 0 || !L.edit[ci]) throw new Error('La columna ' + name + ' no se puede editar');
     var val = String(p.changes[name] == null ? '' : p.changes[name]).trim();
-    if (/^STATUS_/.test(name) && val && estados.indexOf(val) < 0) throw new Error('Status no válido: ' + val);
+    if (/^STATUS_(FROM|TO)$/.test(name) && val && estados.indexOf(val) < 0) throw new Error('Status no válido: ' + val);
     var lid = String(p.id || '') + ':' + name;
     if (p.id && findRow_(lsh, lid)) return;   // ya aplicado (reintento tras un corte)
     var cell = sh.getRange(row, ci + 1), before = cell.getValue();
