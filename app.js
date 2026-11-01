@@ -10,6 +10,7 @@ const norm = s => String(s ?? '').trim().toUpperCase().replace(/\s+/g, '');
 const isWide = () => window.matchMedia('(min-width:760px)').matches;
 const CFG = self.CABLE_CONFIG || {};
 const APP_VERSION = CFG.version || '';
+const cloudTok = () => LS.get('cloudToken', '') || CFG.token || '';   // la clave viene de config.js; Ajustes solo la cambia si hace falta
 const scriptUrl = () => LS.get('urlOverride', '') || CFG.scriptUrl || LS.get('scriptUrl', '');   // manda config.js; solo se cambia a mano en Ajustes
 
 /* ---------- IndexedDB ---------- */
@@ -470,16 +471,25 @@ async function switchCam() {
 })();
 
 /* ---------- Pestañas ---------- */
+const TAB_MOD = { scan: 'cab', search: 'cab', list: 'cab', routes: 'cab', library: 'cab', stats: 'cab', cbuscar: 'con', cresumen: 'con' };
+const MOD_DEFAULT = { cab: 'scan', con: 'cbuscar' };
 function setTab(name) {
-  $('#app').dataset.tab = name;
+  const mod = TAB_MOD[name] || 'cab', was = $('#app').dataset.mod;
+  if (was && was !== mod && $('#view').classList.contains('open')) closeCable();
+  $('#app').dataset.tab = name; $('#app').dataset.mod = mod; LS.set('tab_' + mod, name);
+  $$('.mod').forEach(b => { const on = b.dataset.mod === mod; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
   $$('.tab,.snav[data-tab]').forEach(x => { const on = x.dataset.tab === name; x.classList.toggle('active', on); x.setAttribute('aria-selected', on); });
   $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
   if (DATA) { if (name === 'search') renderSearch(); if (name === 'list') renderList(); }
   if (name === 'stats' && typeof renderStats === 'function') renderStats();
   if (name === 'routes' && typeof renderRoutes === 'function') renderRoutes();
+  if (name === 'cbuscar' && typeof renderCxSearch === 'function') renderCxSearch();
+  if (name === 'cresumen' && typeof renderCxStats === 'function') renderCxStats();
   if (name === 'library' && typeof renderLibrary === 'function') renderLibrary();
 }
-$$('.tab,.snav[data-tab]').forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
+$$('.tab,.snav[data-tab]').forEach(t => { t.dataset.mod = TAB_MOD[t.dataset.tab]; t.addEventListener('click', () => setTab(t.dataset.tab)); });
+$$('.mod').forEach(b => b.addEventListener('click', () => setTab(LS.get('tab_' + b.dataset.mod, MOD_DEFAULT[b.dataset.mod]))));
+$('#app').dataset.mod = 'cab';
 $$('.snav[data-proxy]').forEach(b => b.addEventListener('click', () => $('#' + b.dataset.proxy).click()));
 setTab($('#app').dataset.tab);
 
@@ -781,7 +791,9 @@ function renderSched() {
 function closeCable() {
   $('#view').classList.remove('open');
   current = -1; curSched = -1; cam.paused = false;
+  if (typeof CX !== 'undefined' && CX.sel) { CX.sel = ''; CX.draft = {}; $('#vBody').innerHTML = ''; }
   renderEmpty(); renderSearch(); renderList();
+  if ($('#app').dataset.mod === 'con') { cxEmpty(); if (typeof renderCxSearch === 'function') renderCxSearch(); }
 }
 
 async function renderCable(animate) {
@@ -819,6 +831,7 @@ async function renderCable(animate) {
       <div class="d-status ${statusClass(st)}"><i></i><div><b>${esc(st ? sentence(st) : 'Sin status')}</b>${stDate ? `<small>Desde ${esc(fmtVal(stDate))}</small>` : ''}</div></div>
     </div>
     ${fieldStatusCard(notes, canEd, syncMark)}
+    ${typeof cxHas === 'function' && cxHas(tag) ? '<div class="btn-row"><button class="btn" id="btnToCx">Abrir en Conexionado</button></div>' : ''}
 
     <label class="opt"><input type="checkbox" id="hideEmpty" ${hideEmpty ? 'checked' : ''}> Ocultar las columnas sin dato</label>
     <div class="kvs">${kv || '<p class="empty">No hay columnas elegidas. Pulsa Columnas para elegirlas.</p>'}</div>
@@ -858,7 +871,8 @@ $('#vBody').addEventListener('click', async e => {
   }
   if (!t || current < 0) return;
   const tag = DATA.rows[current][TAGI];
-  if (t.id === 'btnFieldSt') openFieldStatus(tag);
+  if (t.id === 'btnToCx') { setTab('cbuscar'); openCx(tag); }
+  else if (t.id === 'btnFieldSt') openFieldStatus(tag);
   else if (t.id === 'addPhoto') $('#filePhoto').click();
   else if (t.id === 'addPhotoGal') $('#filePhotoGal').click();
   else if (t.id === 'addPdf') $('#filePdf').click();
@@ -889,7 +903,7 @@ $('#vBody').addEventListener('click', async e => {
 $('#vBody').addEventListener('change', e => { if (e.target.id === 'hideEmpty') { LS.set('hideEmpty', e.target.checked); current >= 0 ? renderCable() : renderSched(); } });
 
 $('#vBack').addEventListener('click', () => { if (history.state && history.state.detail) history.back(); else closeCable(); });
-window.addEventListener('popstate', () => { if (!isWide() && current >= 0) closeCable(); });
+window.addEventListener('popstate', () => { if (!isWide() && (current >= 0 || (typeof CX !== 'undefined' && CX.sel))) closeCable(); });
 $('#vAddList').addEventListener('click', () => {
   if (current < 0 && !(curSched >= 0 && schedSrc)) return;
   const tag = current >= 0 ? DATA.rows[current][TAGI] : schedSrc.rows[curSched][schedSrc.tagi];
@@ -1239,6 +1253,7 @@ async function refreshAll() {
     if (typeof pullSchedule === 'function' && !(await pullSchedule(true))) bad.push('el CC_SCHEDULE');
     if (typeof pullRoutes === 'function' && RT.data && !(await pullRoutes(true))) bad.push('transit y bandejas');
     if (typeof pullCC === 'function' && CCD.data && !(await pullCC(true))) bad.push('la tabla CC');
+    if (typeof cxSync === 'function' && !(await cxSync(true), await pullCx(true))) bad.push('el conexionado');
     const t = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     if (bad.length) toast('No se pudo actualizar ' + bad.join(', ') + '. Se mantienen los datos guardados.', 5500);
     else { LS.set('lastUpd', t); paintLastUpd(); toast('Datos actualizados a las ' + t, 3000); }
@@ -1300,6 +1315,21 @@ async function openSettings() {
   $('#sInfo').textContent = (DATA ? `Tabla: ${DATA.rows.length} cables y ${DATA.columns.length} columnas, ${DATA.generado || ''}. ` : 'Sin tabla todavía. ')
     + (cloud.on() ? `Conectado. ${PDFS.length} PDF en Drive. Pendientes de subir: ${pend}.` : 'Falta solo la clave: escribe la que pusiste en TOKEN dentro del script.');
 }
+/* Ajustes solo para administradores (columna admin de PERSONAL) o mientras no haya nadie identificado */
+const canSettings = () => !cloud.on() || !LS.get('userCode', '') || LS.get('userAdmin', false);
+const canConex = () => !cloud.on() || LS.get('userConex', false) || LS.get('userAdmin', false) || !LS.get('userCode', '');
+function paintAccess() {
+  const ok = canSettings();
+  $$('#btnSettings,.snav[data-proxy="btnSettings"]').forEach(b => { b.hidden = !ok; });
+  const n = LS.get('userName', '') || LS.get('userCode', '');
+  $('#umWho').innerHTML = n ? `<b>${esc(n)}</b><small>${LS.get('userAdmin', false) ? 'Administrador' : LS.get('userNotes', true) !== false ? 'Puede editar' : 'Solo lectura'}</small>` : '<b>Sin identificar</b>';
+  $('#btnMenu').classList.toggle('has-user', !!n);
+}
+$('#btnMenu').addEventListener('click', e => {
+  e.stopPropagation(); const m = $('#userMenu'); m.hidden = !m.hidden; $('#btnMenu').setAttribute('aria-expanded', !m.hidden);
+});
+document.addEventListener('click', e => { const m = $('#userMenu'); if (!m.hidden && !e.target.closest('#userMenu')) { m.hidden = true; $('#btnMenu').setAttribute('aria-expanded', 'false'); } });
+$('#userMenu').addEventListener('click', () => { $('#userMenu').hidden = true; });
 const paintLogout = () => $$('.js-logout').forEach(b => { b.hidden = !(cloud.on() && LS.get('userCode', '')); });
 $$('.js-logout').forEach(b => b.addEventListener('click', () => { if (confirm('¿Salir? Para volver a entrar hará falta tu código.')) loginNeeded(''); }));
 $('#sLogout').addEventListener('click', () => { $('#setModal').hidden = true; loginNeeded(''); });
@@ -1415,8 +1445,8 @@ document.addEventListener('visibilitychange', () => {
 
 /* ---------- Nube: Google Sheets + Drive vía Apps Script ---------- */
 const cloud = {
-  on: () => !!(scriptUrl() && LS.get('cloudToken', '')),
-  admin: () => !!(scriptUrl() && LS.get('cloudToken', '') && LS.get('adminToken', '')),   // solo quien tiene la clave de administrador ve los botones de PDF
+  on: () => !!(scriptUrl() && cloudTok()),
+  admin: () => !!(scriptUrl() && cloudTok() && (LS.get('userAdmin', false) || LS.get('adminToken', ''))),   // solo quien tiene la clave de administrador ve los botones de PDF
   author: () => LS.get('userName', '') || LS.get('author', ''),
 };
 const MAX_CLOUD = 15 * 1024 * 1024;   // fotos mayores se quedan solo en el dispositivo
@@ -1430,7 +1460,7 @@ async function fetchT(url, opts, ms) {
   finally { clearTimeout(t); }
 }
 async function apiGet(action, params = {}) {
-  const q = new URLSearchParams({ action, token: LS.get('cloudToken', ''), user: LS.get('userCode', ''), ...params });
+  const q = new URLSearchParams({ action, token: cloudTok(), user: LS.get('userCode', ''), ...params });
   const r = await fetchT(scriptUrl() + '?' + q, {}, /^(data|schedule|routes|ccdata)$/.test(action) ? 120000 : 30000);
   const j = await r.json();
   if (!j.ok) { if (j.login) { loginNeeded(j.error); } throw new Error(j.error || 'error del servidor'); }
@@ -1439,7 +1469,7 @@ async function apiGet(action, params = {}) {
 async function apiPost(action, payload = {}) {
   const r = await fetchT(scriptUrl(), {
     method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, token: LS.get('cloudToken', ''), user: LS.get('userCode', ''), ...(/Pdf$/.test(action) ? { admin: LS.get('adminToken', '') } : {}), ...payload }),
+    body: JSON.stringify({ action, token: cloudTok(), user: LS.get('userCode', ''), ...(/Pdf$/.test(action) ? { admin: LS.get('adminToken', '') } : {}), ...payload }),
   }, 120000);
   const j = await r.json();
   if (!j.ok) { if (j.login) { loginNeeded(j.error); } throw new Error(j.error || 'error del servidor'); }
@@ -1498,7 +1528,7 @@ async function ensureLogin() {
   try { await apiGet('login'); } catch { /* si el servidor pide código, apiGet ya abrió la pantalla; sin cobertura se sigue */ }
 }
 function loginNeeded(msg) {
-  LS.set('userCode', ''); LS.set('userName', ''); paintLogout();
+  LS.set('userCode', ''); LS.set('userName', ''); LS.set('userAdmin', false); LS.set('userConex', false); paintLogout(); paintAccess();
   $('#loginErr').textContent = LS.get('userSeen', false) ? (msg || '') : '';
   $('#loginModal').hidden = false; setTimeout(() => $('#loginCode').focus(), 50);
 }
@@ -1508,7 +1538,7 @@ $('#loginForm').addEventListener('submit', async e => {
   $('#loginGo').disabled = true; $('#loginErr').textContent = '';
   try {
     const j = await apiGet('login', { user: code });
-    LS.set('userCode', code); LS.set('userName', j.nombre || ''); LS.set('userNotes', !!j.notas); LS.set('userSeen', true); paintLogout();
+    LS.set('userCode', code); LS.set('userName', j.nombre || ''); LS.set('userNotes', !!j.notas); LS.set('userConex', !!j.conex); LS.set('userAdmin', !!j.admin); LS.set('userSeen', true); paintLogout(); paintAccess();
     $('#loginModal').hidden = true; $('#loginCode').value = '';
     toast(j.nombre ? 'Hola, ' + j.nombre : 'Sesión iniciada');
     if (DATA) { renderCable && current >= 0 && renderCable(); }
@@ -1520,7 +1550,7 @@ $('#loginForm').addEventListener('submit', async e => {
 /* Sincronización: sube lo pendiente y trae lo de los demás */
 let syncing = false, resync = false, cloudStarted = false;
 function startCloud() {
-  paintLogout();
+  paintLogout(); paintAccess();
   if (cloudStarted || !cloud.on()) return;
   cloudStarted = true;
   ensureLogin().then(() => pullTable(true)).then(() => syncCloud(true)).then(() => typeof pullSchedule === 'function' && pullSchedule(true));
@@ -1552,8 +1582,9 @@ async function syncCloud(silent) {
       f.synced = true; await DB.put('files', f);
     }
 
+    if (typeof cxSync === 'function') await cxSync(false);
     const s = await apiGet('sync', PDFHASH ? { pdfHash: PDFHASH } : {});
-    if (s.me) { LS.set('userNotes', !!s.me.notas); if (s.me.nombre) LS.set('userName', s.me.nombre); }
+    if (s.me) { LS.set('userConex', !!s.me.conex); LS.set('userAdmin', !!s.me.admin); paintAccess(); LS.set('userNotes', !!s.me.notas); if (s.me.nombre) LS.set('userName', s.me.nombre); }
     if (s.pdfs) { setPdfs(s.pdfs, s.pdfHash); await DB.put('meta', { hash: s.pdfHash, list: s.pdfs }, 'pdfs'); if ($('#tab-library').classList.contains('active')) renderLibrary(); }
     const notes = await DB.all('notes'), files = await DB.all('files');
     const nUid = new Set(notes.map(x => x.uid)), fUid = new Set(files.map(x => x.uid));

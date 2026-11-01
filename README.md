@@ -89,6 +89,15 @@ La pestaña **Transit** usa la columna `ROUTE_CODES` del CC_SCHEDULE (todas las 
 
 - **Vaciar la lista de escaneos** también borra las filas de la pestaña ESCANEOS del Sheet (deja la cabecera). Si no hay cobertura, no se vacía y avisa.
 
+## 5e. Dos sistemas: Cableado y Conexionado
+
+- **Organización**: arriba (móvil y tablet) o en el menú lateral (escritorio) se elige el sistema. **Cableado** reúne Escanear, Buscar, Lista, Transit, Biblioteca, Resumen y Columnas. **Conexionado** tiene su propio Buscar y Resumen. El menú de usuario (icono de persona) agrupa Columnas, Ajustes y Salir.
+- **Clave por defecto**: la clave de conexión viene en `config.js` (`token`, hoy DRAGADOS-ADMIN) y debe ser igual que `TOKEN` en el script. Nadie la escribe. El acceso lo controla la hoja PERSONAL.
+- **Ajustes** solo lo ve quien tenga `admin` = SI en PERSONAL (y sigue pidiendo el PIN).
+- **Hoja PERSONAL**, columnas: `codigo`, `nombre`, `cargo`, `activo`, `editar_notas`, `editar_conexionado`, `admin` (SI/NO). Un administrador también puede subir y quitar PDF desde la app, sin ADMIN_TOKEN.
+- **Conexionado** se alimenta de la pestaña `CONEXIONADO` del Sheet. Las columnas con cabecera verde (#00B050) son las editables; las demás vienen con fórmulas y solo se leen. Filas y columnas nuevas aparecen solas en cada actualización. Cada edición queda en la pestaña `CONEXIONADO_LOG` (cable, columna, antes, después, quién y cuándo) y se ve en el historial de la ficha. Al elegir un status se rellena la fecha de hoy. Sin cobertura, los cambios esperan en el teléfono y se suben solos. Quien no tenga `editar_conexionado` solo lee.
+- El rango `STATUS_FROM_TO` del Sheet define los status permitidos.
+
 ## 6. Cuando la tabla crece
 
 Añade filas y columnas en la pestaña CABLEADO cuando quieras:

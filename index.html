@@ -18,7 +18,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="app" id="app" data-tab="scan">
+<div class="app" id="app" data-tab="scan" data-mod="cab">
 
   <!-- MENÚ LATERAL (escritorio) -->
   <aside class="side" aria-label="Menú">
@@ -32,16 +32,20 @@
       <div class="brand-text"><strong>Cable Scan</strong><span class="sub">Borwin 4</span></div>
     </div>
     <nav class="side-nav" aria-label="Secciones">
+      <p class="snav-h">Cableado</p>
       <button class="snav" data-tab="scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M4 12h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Escanear</span></button>
       <button class="snav" data-tab="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Buscar</span><kbd>/</kbd></button>
       <button class="snav" data-tab="list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>Lista</span><b class="count" data-n="0">0</b></button>
       <button class="snav" data-tab="routes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16M8 4v6M15 9v6M10 14v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Transit</span></button>
       <button class="snav" data-tab="library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Biblioteca</span></button>
       <button class="snav" data-tab="stats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>Resumen</span></button>
+      <button class="snav js-cabonly" data-proxy="btnCols"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h4v14H4zM10 5h4v14h-4zM16 5h4v14h-4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Columnas</span></button>
+      <p class="snav-h con">Conexionado</p>
+      <button class="snav" data-tab="cbuscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Buscar</span></button>
+      <button class="snav" data-tab="cresumen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>Resumen</span></button>
       <hr>
       <button class="snav js-refresh" data-proxy="btnRefresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-4.5L4 9m0-5v5h5M4 13a8 8 0 0 0 14 4.5L20 15m0 5v-5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Actualizar</span><small id="lastUpd"></small><b class="pend-badge" hidden></b></button>
       <button class="snav" data-proxy="btnTheme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg><span class="js-themelbl">Tema</span></button>
-      <button class="snav" data-proxy="btnCols"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h4v14H4zM10 5h4v14h-4zM16 5h4v14h-4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Columnas</span></button>
       <button class="snav js-logout" data-proxy="btnLogout" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Salir</span></button>
       <button class="snav" data-proxy="btnSettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Ajustes</span></button>
       <button class="snav" data-proxy="btnInstall" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 17v3h14v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Instalar app</span></button>
@@ -74,17 +78,28 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0l-4-4m4 4l4-4M5 17v3h14v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>Instalar</span>
       </button>
-      <button class="tool" id="btnCols" aria-label="Elegir columnas">
+      <button class="tool" id="btnMenu" aria-label="Menú de usuario" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 20c.6-3.6 3.4-5.5 7-5.5s6.4 1.9 7 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+  </header>
+
+
+<div class="usermenu" id="userMenu" role="menu" hidden>
+  <div class="um-who" id="umWho"></div>
+      <button class="menu-item js-cabonly" id="btnCols" aria-label="Elegir columnas">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h4v14H4zM10 5h4v14h-4zM16 5h4v14h-4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
         <span>Columnas</span>
       </button>
-      <button class="tool js-logout" id="btnLogout" aria-label="Salir" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <button class="tool" id="btnSettings" aria-label="Ajustes">
+      <button class="menu-item js-logout" id="btnLogout" aria-label="Salir" hidden><span>Salir</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="menu-item" id="btnSettings" aria-label="Ajustes">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="2"/></svg>
         <span>Ajustes</span>
       </button>
-    </div>
-  </header>
+</div>
+
+  <div class="modbar" role="tablist" aria-label="Sistema">
+    <button class="mod on" data-mod="cab" role="tab">Cableado</button>
+    <button class="mod" data-mod="con" role="tab">Conexionado</button>
+  </div>
 
   <div class="stage">
     <aside class="rail">
@@ -109,6 +124,8 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
           <span>Biblioteca</span>
         </button>
+        <button class="tab" role="tab" data-tab="cbuscar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 16l4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Buscar</span></button>
+        <button class="tab" role="tab" data-tab="cresumen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>Resumen</span></button>
         <button class="tab" role="tab" data-tab="stats">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
           <span>Resumen</span>
@@ -209,6 +226,16 @@
         <section id="tab-routes" class="panel" aria-label="Transit y bandejas">
           <h2 class="ptitle">Transit y bandejas <small id="rtInfo"></small></h2>
           <div id="routes"></div>
+        </section>
+
+        <!-- CONEXIONADO -->
+        <section id="tab-cbuscar" class="panel" aria-label="Conexionado: buscar">
+          <h2 class="ptitle">Conexionado <small id="cxInfo"></small></h2>
+          <div id="cxSearch"></div>
+        </section>
+        <section id="tab-cresumen" class="panel" aria-label="Conexionado: resumen">
+          <h2 class="ptitle">Resumen de conexionado <small id="cxInfo2"></small></h2>
+          <div id="cxStats"></div>
         </section>
 
         <!-- BIBLIOTECA -->
@@ -436,5 +463,6 @@
 <script src="cc.js"></script>
 <script src="viewer.js"></script>
 <script src="library.js"></script>
+<script src="cx.js"></script>
 </body>
 </html>

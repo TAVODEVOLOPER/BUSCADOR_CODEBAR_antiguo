@@ -63,7 +63,12 @@ var MAX_PDF_BYTES = 30 * 1024 * 1024;
 
 var H_NOTAS = ['id', 'tag', 'nota', 'fecha', 'autor', 'estado'];
 var HOJA_PERSONAL = 'PERSONAL';
-var H_PERSONAL = ['codigo', 'nombre', 'cargo', 'activo', 'editar_notas'];
+var H_PERSONAL = ['codigo', 'nombre', 'cargo', 'activo', 'editar_notas', 'editar_conexionado', 'admin'];
+var HOJA_CONEX = 'CONEXIONADO';          // pestaña del sistema de conexionado; las columnas con cabecera verde (#00B050) son las editables
+var HOJA_CONEX_LOG = 'CONEXIONADO_LOG';
+var H_CONEX_LOG = ['id', 'fecha', 'cable', 'columna', 'antes', 'despues', 'autor'];
+var CONEX_EDITABLES = ['MarcaCampo_From', 'STATUS_FROM', 'FECHA_STATUS_FROM', 'MarcaCampo_To', 'STATUS_TO', 'FECHA_STATUS_TO', 'OBSERVACION'];   // por si no se detecta el color
+var CONEX_ESTADOS = ['COIL', 'FALTA', 'IMPUTADO', 'NO ENCONTRADO', 'PENDING', 'POR IMPUTAR', 'REASIGNADO'];   // por si no existe el rango STATUS_FROM_TO
 var H_ARCH = ['uid', 'archivo_id', 'tag', 'tipo', 'nombre', 'mime', 'fecha', 'autor'];
 var H_PDF = ['id', 'nombre', 'modificado', 'tipo', 'carpeta'];
 var ERRORES = { '#REF!': 1, '#N/A': 1, '#VALUE!': 1, '#DIV/0!': 1, '#NAME?': 1, '#NUM!': 1, '#NULL!': 1 };
@@ -90,24 +95,31 @@ function handle_(p) {
       me = findPerson_(list, p.user);
       if (!me || !me.activo) return out_({ ok: false, login: true, error: 'Código de personal no válido o desactivado' });
     }
-    var canEdit = !list.length || isAdmin_(p) || !!(me && me.notas);
+    var adm = isAdmin_(p) || !!(me && me.admin);
+    var canEdit = !list.length || adm || !!(me && me.notas);
+    var canConex = !list.length || adm || !!(me && me.conex);
+    if (p.action === 'setConex') {
+      if (!canConex) throw new Error('Tu código no tiene permiso para editar el conexionado');
+      if (me) p.author = me.nombre;
+    }
     if (/^(addNote|delNote|upload|delFile|clearScans)$/.test(p.action)) {
       if (!canEdit) throw new Error('Tu código no tiene permiso para editar notas, fotos ni status');
       if (me) p.author = me.nombre;
     }
     switch (p.action) {
-      case 'login': return out_({ ok: true, open: !list.length, nombre: me ? me.nombre : '', cargo: me ? me.cargo : '', notas: canEdit });
+      case 'login': return out_({ ok: true, open: !list.length, nombre: me ? me.nombre : '', cargo: me ? me.cargo : '', notas: canEdit, conex: canConex, admin: adm });
       case 'ping': return out_({ ok: true, admin: isAdmin_(p) });
       case 'data': return out_(getData_(p.hash));
-      case 'sync': return out_(getSync_(p.pdfHash, { nombre: me ? me.nombre : '', notas: canEdit }));
+      case 'sync': return out_(getSync_(p.pdfHash, { nombre: me ? me.nombre : '', notas: canEdit, conex: canConex, admin: adm }));
       case 'schedule': return out_(getSchedule_(p.hash));
       case 'routes': return out_(getRoutes_(p.hash));
       case 'ccdata': return out_(getCC_(p.hash));
+      case 'conex': return out_(getConex_(p.hash));
       case 'file': return out_(getFile_(p.uid));
       case 'pdf': return out_(getPdf_(p.id));
       case 'uploadPdf': case 'delPdf':
-        if (!isAdmin_(p)) throw new Error(ADMIN_TOKEN ? 'Clave de administrador incorrecta' : 'Subir PDF desde la app está desactivado: pon un ADMIN_TOKEN en el script');
-      case 'addNote': case 'delNote': case 'upload': case 'delFile': case 'scans': case 'clearScans':
+        if (!adm) throw new Error(ADMIN_TOKEN ? 'Clave de administrador incorrecta' : 'Subir PDF desde la app está desactivado: pon un ADMIN_TOKEN en el script');
+      case 'addNote': case 'delNote': case 'upload': case 'delFile': case 'scans': case 'clearScans': case 'setConex':
         var lock = LockService.getScriptLock();
         lock.waitLock(25000);
         try { return out_(write_(p)); } finally { lock.releaseLock(); }
@@ -124,7 +136,7 @@ function personal_() {
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA_PERSONAL);
   if (!sh || sh.getLastRow() < 2) return [];
   return rows_(sh).filter(function (r) { return String(r[0]).trim(); }).map(function (r) {
-    return { codigo: String(r[0]).trim().toUpperCase(), nombre: String(r[1]).trim(), cargo: String(r[2] || '').trim(), activo: yes_(r[3]), notas: yes_(r[4]) };
+    return { codigo: String(r[0]).trim().toUpperCase(), nombre: String(r[1]).trim(), cargo: String(r[2] || '').trim(), activo: yes_(r[3]), notas: yes_(r[4]), conex: yes_(r[5]), admin: yes_(r[6]) };
   });
 }
 function findPerson_(list, code) {
@@ -192,7 +204,9 @@ function autorizar() {
   sheet_(HOJA_NOTAS, H_NOTAS);
   sheet_(HOJA_ARCHIVOS, H_ARCH);
   sheet_(HOJA_PDF, H_PDF);
-  sheet_(HOJA_PERSONAL, H_PERSONAL);
+  var shp = sheet_(HOJA_PERSONAL, H_PERSONAL);
+  shp.getRange(1, 1, 1, H_PERSONAL.length).setValues([H_PERSONAL]);
+  sheet_(HOJA_CONEX_LOG, H_CONEX_LOG);
   var shn = sheet_(HOJA_NOTAS, H_NOTAS);
   shn.getRange(1, 1, 1, H_NOTAS.length).setValues([H_NOTAS]);
   fotosFolder_();
@@ -242,6 +256,101 @@ function onOpen() {
 function actualizarIndiceAhora_() {
   var n = indexarPdf();
   SpreadsheetApp.getActiveSpreadsheet().toast(n + ' PDF indexados', 'Cable Scan', 6);
+}
+
+/* ---------- conexionado ---------- */
+function conexSheet_() {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA_CONEX);
+  if (!sh || sh.getLastRow() < 2) throw new Error('No existe la pestaña ' + HOJA_CONEX);
+  return sh;
+}
+/* localiza la fila de cabeceras (la que tiene CABLE_NUMBER) y devuelve columnas, grupos FROM/TO y cuáles son editables */
+function conexLayout_(sh) {
+  var v = sh.getRange(1, 1, Math.min(6, sh.getLastRow()), sh.getLastColumn()).getValues();
+  var hr = -1;
+  for (var i = 0; i < v.length; i++) { if (v[i].map(function (x) { return String(x).trim(); }).indexOf('CABLE_NUMBER') >= 0) { hr = i; break; } }
+  if (hr < 0) throw new Error('No encuentro la columna CABLE_NUMBER en ' + HOJA_CONEX);
+  var head = v[hr].map(function (x) { return String(x).trim(); });
+  var last = head.length; while (last > 0 && !head[last - 1]) last--;
+  var grp = [], g = '', merged = false;
+  for (var c = 0; c < last; c++) grp.push('');
+  if (hr > 0) {
+    try {   // grupos FROM / TO: celdas combinadas de la fila de arriba
+      sh.getRange(hr, 1, 1, last).getMergedRanges().forEach(function (mr) {
+        var t = String(mr.getValue()).trim();
+        for (var k = 0; k < mr.getNumColumns(); k++) grp[mr.getColumn() - 1 + k] = t;
+        merged = true;
+      });
+    } catch (e) { merged = false; }
+    for (var c2 = 0; c2 < last; c2++) { var gv = String(v[hr - 1][c2]).trim(); if (gv && !grp[c2]) grp[c2] = gv; }
+    if (!merged) { var gg = ''; for (var c3 = 0; c3 < last; c3++) { if (grp[c3]) gg = grp[c3]; else if (gg && !/^OBSERV/i.test(head[c3])) grp[c3] = gg; } }
+  }
+  var edit = [], any = false;
+  try {
+    var bg = sh.getRange(hr + 1, 1, 1, last).getBackgrounds()[0];
+    for (var k = 0; k < last; k++) { var e = String(bg[k]).toLowerCase() === '#00b050' && !!head[k]; edit.push(e); if (e) any = true; }
+  } catch (err) { any = false; }
+  if (!any) edit = head.slice(0, last).map(function (n) { return CONEX_EDITABLES.indexOf(n) >= 0; });
+  return { hr: hr, head: head.slice(0, last), grp: grp, edit: edit, ti: head.indexOf('CABLE_NUMBER') };
+}
+function conexEstados_() {
+  try {
+    var rg = SpreadsheetApp.getActiveSpreadsheet().getRangeByName('STATUS_FROM_TO');
+    if (rg) { var l = rg.getValues().map(function (r) { return String(r[0]).trim(); }).filter(function (x) { return x; }); if (l.length) return l; }
+  } catch (e) { }
+  return CONEX_ESTADOS;
+}
+function getConex_(clientHash) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA_CONEX);
+  if (!sh || sh.getLastRow() < 2) return { ok: true, none: true };
+  var L = conexLayout_(sh), n = L.head.length, tz = Session.getScriptTimeZone();
+  var first = L.hr + 2, cnt = sh.getLastRow() - L.hr - 1;
+  if (cnt < 1) return { ok: true, none: true };
+  var rg = sh.getRange(first, 1, cnt, n), raw = rg.getValues(), disp = rg.getDisplayValues(), rows = [];
+  for (var r = 0; r < raw.length; r++) {
+    if (!String(disp[r][L.ti]).trim()) continue;
+    var o = [];
+    for (var c = 0; c < n; c++) {
+      var x = raw[r][c], d = String(disp[r][c]).trim();
+      o.push(x instanceof Date ? Utilities.formatDate(x, tz, 'yyyy-MM-dd') : (ERRORES[d] ? '' : d));
+    }
+    rows.push(o);
+  }
+  var lsh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA_CONEX_LOG), log = [];
+  if (lsh && lsh.getLastRow() > 1) {
+    var lv = rows_(lsh), from = Math.max(0, lv.length - 3000);
+    for (var i = from; i < lv.length; i++) log.push([String(lv[i][1]), String(lv[i][2]), String(lv[i][3]), String(lv[i][4]), String(lv[i][5]), String(lv[i][6])]);
+  }
+  var cols = L.head.map(function (name, i) { return { name: name, letter: colLetter_(i), group: L.grp[i], edit: L.edit[i] }; });
+  var estados = conexEstados_();
+  var hash = md5_(JSON.stringify([cols, rows, log, estados]));
+  if (clientHash && clientHash === hash) return { ok: true, same: true, hash: hash };
+  return { ok: true, hash: hash, cols: cols, rows: rows, log: log, estados: estados, generado: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm') };
+}
+function setConex_(p) {
+  if (!p.cable || !p.changes) throw new Error('Faltan datos del conexionado');
+  var sh = conexSheet_(), L = conexLayout_(sh), tz = Session.getScriptTimeZone();
+  var key = String(p.cable).toUpperCase().replace(/\s+/g, '');
+  var col = sh.getRange(L.hr + 2, L.ti + 1, Math.max(1, sh.getLastRow() - L.hr - 1), 1).getValues(), row = -1;
+  for (var i = 0; i < col.length; i++) { if (String(col[i][0]).toUpperCase().replace(/\s+/g, '') === key) { row = L.hr + 2 + i; break; } }
+  if (row < 0) throw new Error('El cable ' + p.cable + ' no está en ' + HOJA_CONEX);
+  var estados = conexEstados_(), lsh = sheet_(HOJA_CONEX_LOG, H_CONEX_LOG), now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), done = 0;
+  Object.keys(p.changes).forEach(function (name) {
+    var ci = L.head.indexOf(name);
+    if (ci < 0 || !L.edit[ci]) throw new Error('La columna ' + name + ' no se puede editar');
+    var val = String(p.changes[name] == null ? '' : p.changes[name]).trim();
+    if (/^STATUS_/.test(name) && val && estados.indexOf(val) < 0) throw new Error('Status no válido: ' + val);
+    var lid = String(p.id || '') + ':' + name;
+    if (p.id && findRow_(lsh, lid)) return;   // ya aplicado (reintento tras un corte)
+    var cell = sh.getRange(row, ci + 1), before = cell.getValue();
+    var out = val;
+    if (/^FECHA_/.test(name)) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(val); out = m ? new Date(+m[1], +m[2] - 1, +m[3]) : ''; }
+    else if (/^\d+$/.test(val)) out = Number(val);
+    cell.setValue(out);
+    lsh.appendRow([lid, now, String(p.cable), name, before instanceof Date ? Utilities.formatDate(before, tz, 'yyyy-MM-dd') : String(before), val, String(p.author || '')]);
+    done++;
+  });
+  return { ok: true, applied: done };
 }
 
 /* ---------- lecturas ---------- */
@@ -414,7 +523,7 @@ function getCC_(clientHash) {
   return { ok: true, hash: hash, total: total, cols: cols, dict: dict, data: data };
 }
 
-function getSync_(pdfHash, me) {
+function getSync_(pdfHash, me) {   // me: { nombre, notas, conex, admin }
   var notes = rows_(sheet_(HOJA_NOTAS, H_NOTAS)).filter(function (r) { return r[0]; }).map(function (r) {
     return { id: String(r[0]), tag: String(r[1]), text: String(r[2]), date: String(r[3]), author: String(r[4]), estado: String(r[5] || '') };
   });
@@ -518,6 +627,9 @@ function write_(p) {
         sh.deleteRow(cell.getRow());
       }
       return { ok: true };
+
+    case 'setConex':
+      return setConex_(p);
 
     case 'clearScans':
       var shc = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(p.sheet || 'ESCANEOS');
