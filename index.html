@@ -45,6 +45,7 @@
         <button class="snav" data-tab="routes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16M8 4v6M15 9v6M10 14v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Transit</span></button>
         <p class="ssub">Avance</p>
         <button class="snav" data-tab="stats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>Resumen</span></button>
+        <button class="snav" data-tab="cambios"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l5 5L20 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Cambios del personal</span></button>
         <button class="snav js-cabonly" data-proxy="btnCols"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h4v14H4zM10 5h4v14h-4zM16 5h4v14h-4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Columnas</span></button>
       </details>
       <details class="sgrp con" data-mod="con">
@@ -59,6 +60,7 @@
       <details class="sgrp lib">
         <summary><i class="pip"></i>Herramientas</summary>
         <button class="snav" data-tab="library"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Biblioteca</span></button>
+              <button class="snav" data-tab="almacen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l9-5 9 5v11H3zM8 20v-6h8v6M3 9h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Almacén</span></button>
       </details>
       <details class="sgrp tools">
         <summary><i class="pip"></i>Ajustes</summary>
@@ -271,6 +273,18 @@
         <section id="tab-library" class="panel" aria-label="Biblioteca de PDF">
           <h2 class="ptitle">Biblioteca <small id="lbInfo"></small></h2>
           <div id="library"></div>
+        </section>
+
+        <!-- ALMACEN -->
+        <section id="tab-almacen" class="panel alm" aria-label="Almacén">
+          <h2 class="ptitle">Almacén <small id="lbInfoAlm"></small></h2>
+          <div id="almacen"></div>
+        </section>
+
+        <!-- CAMBIOS DEL PERSONAL -->
+        <section id="tab-cambios" class="panel" aria-label="Cambios del personal">
+          <h2 class="ptitle">Cambios del personal</h2>
+          <div id="cambios"></div>
         </section>
 
         <!-- RESUMEN -->
@@ -492,7 +506,10 @@
 <script src="cc.js"></script>
 <script src="viewer.js"></script>
 <script src="library.js"></script>
+<script src="colfilter.js"></script>
 <script src="cx.js"></script>
 <script src="cxlist.js"></script>
+<script src="changes.js"></script>
+<script src="alm.js"></script>
 </body>
 </html>

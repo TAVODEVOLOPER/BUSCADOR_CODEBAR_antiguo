@@ -197,3 +197,9 @@ La clave `DRAGADOS-ADMIN` va en config.js, que es público en GitHub Pages: no e
 - Pestaña "Por imputar" en Buscar: filtra los cables con avances pendientes; PDF de avances; el administrador los marca Imputado o Descartado (por cable o todos los filtrados).
 - Lista de trabajo en PDF: anchos medidos por columna, sin texto vertical.
 - Modo oscuro: los campos llenados se leen bien.
+
+## v1.23.0
+- Conexionado > Buscar: "Buscar en" y "Filtrar por columna" como en Cableado (colfilter.js, reutilizable).
+- Conexionado: Deshacer para quien reportó el avance y para el administrador (acción undoAvance, estado Deshecho). Filtro "Quién lo reportó" en "Por imputar".
+- Cableado > Cambios del personal (nueva ventana): filtra status de campo y notas por estado (por imputar / imputados), tipo y persona; el administrador los marca Imputado (columnas nuevas revision, revisado_por, fecha_revision en NOTAS); PDF; Deshacer para el autor y el administrador.
+- Herramientas > Almacén: lee ENTRADA_ALM_BW y SALIDA_ALM_BW. Vistas En almacén (stock = entradas - salidas por código), Entradas y Salidas, con búsqueda, filtros por columna y Excel. Si no reconoce las columnas de código/cantidad se eligen en "Columnas del stock".

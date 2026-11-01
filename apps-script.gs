@@ -72,7 +72,9 @@ var MAX_FOTO_BYTES = 8 * 1024 * 1024;
 var HOJA_SEG = 'SEGURIDAD_LOG';
 var H_SEG = ['fecha', 'evento', 'detalle'];
 
-var H_NOTAS = ['id', 'tag', 'nota', 'fecha', 'autor', 'estado'];
+var H_NOTAS = ['id', 'tag', 'nota', 'fecha', 'autor', 'estado', 'revision', 'revisado_por', 'fecha_revision'];
+var HOJA_ALM_IN = 'ENTRADA_ALM_BW';   // ingreso de materiales, equipos e insumos al almacén
+var HOJA_ALM_OUT = 'SALIDA_ALM_BW';   // salida de materiales, equipos e insumos del almacén
 var HOJA_PERSONAL = 'PERSONAL';
 var H_PERSONAL = ['codigo', 'nombre', 'cargo', 'activo', 'editar_notas', 'editar_conexionado', 'admin'];
 var HOJA_CONEX = 'CONEXIONADO';          // pestaña del sistema de conexionado; las columnas con cabecera verde (#00B050) son las editables
@@ -113,10 +115,10 @@ function handle_(p) {
     if (p.action === 'login' && me) logSeg_('entrada', me.nombre + (adm ? ' (admin)' : ''));
     var canEdit = !list.length || adm || !!(me && me.notas);
     var canConex = !list.length || adm || !!(me && me.conex);
-    if (p.action === 'setConex') {
+    if (p.action === 'setConex' || p.action === 'undoAvance') {
       if (!canConex) throw new Error('Tu código no tiene permiso para editar el conexionado');
       if (me) p.author = me.nombre;
-      p.adm = adm;   // lo decide el servidor, nunca el teléfono
+      p.adm = adm; p.ident = !!me;   // lo decide el servidor, nunca el teléfono
     }
     if (/^(addNote|delNote|upload|delFile|clearScans)$/.test(p.action)) {
       if (!canEdit) throw new Error('Tu código no tiene permiso para editar notas, fotos ni status');
@@ -132,14 +134,15 @@ function handle_(p) {
       case 'routes': return out_(getRoutes_(p.hash));
       case 'ccdata': return out_(getCC_(p.hash));
       case 'conex': return out_(getConex_(p.hash));
+      case 'almacen': return out_(getAlmacen_(p.hash));
       case 'file': return out_(getFile_(p.uid));
       case 'pdf': return out_(getPdf_(p.id));
-      case 'marcarAvances':
+      case 'revNotas': case 'marcarAvances':
         if (!adm) throw new Error('Solo el administrador puede marcar avances');
       case 'uploadPdf': case 'delPdf':
-        if (p.action !== 'marcarAvances')
+        if (p.action !== 'marcarAvances' && p.action !== 'revNotas')
         if (!adm) throw new Error(ADMIN_TOKEN ? 'Clave de administrador incorrecta' : 'Subir PDF desde la app está desactivado: pon un ADMIN_TOKEN en el script');
-      case 'addNote': case 'delNote': case 'upload': case 'delFile': case 'scans': case 'clearScans': case 'setConex':
+      case 'addNote': case 'delNote': case 'upload': case 'delFile': case 'scans': case 'clearScans': case 'setConex': case 'undoAvance':
         var lock = LockService.getScriptLock();
         lock.waitLock(25000);
         try { return out_(write_(p)); } finally { lock.releaseLock(); }
@@ -454,6 +457,68 @@ function marcarAvances_(p) {
   return { ok: true, marcados: n };
 }
 
+/* deshacer un avance pendiente: lo puede hacer quien lo reportó o el administrador */
+function undoAvance_(p) {
+  var ids = {}, n = 0;
+  (p.ids || []).forEach(function (x) { ids[String(x)] = 1; });
+  var lsh = sheet_(HOJA_CONEX_LOG, H_CONEX_LOG), tz = Session.getScriptTimeZone(), now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  if (lsh.getLastRow() < 2) return { ok: true, deshechos: 0 };
+  var rg = lsh.getRange(2, 1, lsh.getLastRow() - 1, 10), v = rg.getValues();
+  for (var i = 0; i < v.length; i++) {
+    if (!ids[String(v[i][0])]) continue;
+    if (String(v[i][7]) !== 'Pendiente') throw new Error('Ese cambio ya fue ' + (String(v[i][7]).toLowerCase() || 'aplicado') + ' y no se puede deshacer desde aquí');
+    if (!p.adm && p.ident && String(v[i][6]) !== String(p.author || '')) throw new Error('Solo quien hizo el cambio o un administrador puede deshacerlo');
+    v[i][7] = 'Deshecho'; v[i][8] = safe_(p.author, 80); v[i][9] = now; n++;
+  }
+  if (n) rg.setValues(v);
+  return { ok: true, deshechos: n };
+}
+/* el administrador marca notas / status de campo como imputados (revisión) */
+function revNotas_(p) {
+  var ids = {}, n = 0, val = p.estado === 'Imputado' ? 'Imputado' : '';
+  (p.ids || []).forEach(function (x) { ids[String(x)] = 1; });
+  var sh = sheet_(HOJA_NOTAS, H_NOTAS), tz = Session.getScriptTimeZone(), now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  if (sh.getLastRow() < 2) return { ok: true, marcados: 0 };
+  if (sh.getLastColumn() < H_NOTAS.length) sh.getRange(1, 1, 1, H_NOTAS.length).setValues([H_NOTAS]);
+  var rg = sh.getRange(2, 1, sh.getLastRow() - 1, 9), v = rg.getValues();
+  for (var i = 0; i < v.length; i++) {
+    if (!ids[String(v[i][0])]) continue;
+    v[i][6] = val; v[i][7] = val ? safe_(p.author, 80) : ''; v[i][8] = val ? now : ''; n++;
+  }
+  if (n) rg.setValues(v);
+  return { ok: true, marcados: n };
+}
+/* ---------- almacén: ENTRADA_ALM_BW y SALIDA_ALM_BW (se leen tal cual; la cabecera se detecta sola) ---------- */
+function leerAlm_(name) {
+  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  if (!sh || sh.getLastRow() < 1) return { falta: !sh, cols: [], rows: [] };
+  var v = sh.getDataRange().getDisplayValues(), raw = sh.getDataRange().getValues(), tz = Session.getScriptTimeZone(), h = 0;
+  for (var i = 0; i < Math.min(8, v.length); i++) {
+    var filled = v[i].filter(function (x) { return String(x).trim() !== ''; }).length;
+    if (filled >= 3) { h = i; break; }
+  }
+  var head = v[h].map(function (x) { return String(x).trim(); }), last = head.length;
+  while (last > 0 && !head[last - 1]) last--;
+  head = head.slice(0, last);
+  var cols = head.map(function (n, i) { return { name: n || ('Columna ' + (i + 1)) }; }), rows = [];
+  for (var r = h + 1; r < v.length; r++) {
+    var o = [], any = false;
+    for (var c = 0; c < last; c++) {
+      var x = raw[r][c], d = String(v[r][c]).trim();
+      var t = x instanceof Date ? Utilities.formatDate(x, tz, 'yyyy-MM-dd') : (ERRORES[d] ? '' : d);
+      if (t !== '') any = true; o.push(t);
+    }
+    if (any) rows.push(o);
+  }
+  return { cols: cols, rows: rows };
+}
+function getAlmacen_(clientHash) {
+  var e = leerAlm_(HOJA_ALM_IN), s = leerAlm_(HOJA_ALM_OUT);
+  var hash = md5_(JSON.stringify([e, s]));
+  if (clientHash && clientHash === hash) return { ok: true, same: true, hash: hash };
+  return { ok: true, hash: hash, entrada: e, salida: s, generado: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') };
+}
+
 /* ---------- lecturas ---------- */
 function getData_(clientHash) {
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA_DATOS);
@@ -626,7 +691,7 @@ function getCC_(clientHash) {
 
 function getSync_(pdfHash, me) {   // me: { nombre, notas, conex, admin }
   var notes = rows_(sheet_(HOJA_NOTAS, H_NOTAS)).filter(function (r) { return r[0]; }).map(function (r) {
-    return { id: String(r[0]), tag: String(r[1]), text: String(r[2]), date: String(r[3]), author: String(r[4]), estado: String(r[5] || '') };
+    return { id: String(r[0]), tag: String(r[1]), text: String(r[2]), date: String(r[3]), author: String(r[4]), estado: String(r[5] || ''), rev: String(r[6] || '') };
   });
   var files = rows_(sheet_(HOJA_ARCHIVOS, H_ARCH)).filter(function (r) { return r[0]; }).map(function (r) {
     return { uid: String(r[0]), tag: String(r[2]), kind: String(r[3]), name: String(r[4]), mime: String(r[5]), date: String(r[6]), author: String(r[7]) };
@@ -743,6 +808,12 @@ function write_(p) {
 
     case 'marcarAvances':
       return marcarAvances_(p);
+
+    case 'undoAvance':
+      return undoAvance_(p);
+
+    case 'revNotas':
+      return revNotas_(p);
 
     case 'clearScans':
       guardSheet_(p.sheet || 'ESCANEOS');

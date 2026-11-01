@@ -360,8 +360,10 @@ td .x{min-width:36px;min-height:36px;border:0;background:none;color:var(--bad);f
   .toast{bottom:24px}
 
   .detail{display:flex;position:static;flex:1;min-width:0;z-index:auto;animation:none}
-  .app[data-tab="stats"] .rail,.app[data-tab="routes"] .rail,.app[data-tab="cresumen"] .rail{flex:1;width:auto;min-width:0}
-  .app[data-tab="stats"] .detail,.app[data-tab="routes"] .detail,.app[data-tab="cresumen"] .detail{display:none}
+  .app[data-tab="stats"] .rail,.app[data-tab="routes"] .rail,.app[data-tab="cresumen"] .rail,.app[data-tab="almacen"] .rail,.app[data-tab="cambios"] .rail{flex:1;width:auto;min-width:0}
+  .app[data-tab="stats"] .detail,.app[data-tab="routes"] .detail,.app[data-tab="cresumen"] .detail,.app[data-tab="almacen"] .detail,.app[data-tab="cambios"] .detail{display:none}
+  .app[data-tab="almacen"] .panel,.app[data-tab="cambios"] .panel{max-width:1240px;margin:0}
+  #cambios .rows{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:10px}
   .detail.open{animation:none}
   #vBack{display:none}
   .detail-head{justify-content:flex-end;min-height:56px;padding-top:8px;border-bottom:1px solid var(--hair);background:var(--bg);border-bottom-color:transparent}
@@ -798,3 +800,18 @@ body{background:var(--bg) url(bg-m.jpg) center/cover fixed no-repeat}
 .cx-pick legend{font-weight:700;font-size:13px;color:var(--muted);padding:0 4px}
 .cx-pk{display:flex;align-items:center;gap:8px;min-height:40px;font-size:14px}
 .cx-pk input{width:20px;height:20px;flex:none}
+
+.alm-t{border-collapse:collapse;width:100%;font-size:14px}
+.alm-t th,.alm-t td{padding:7px 10px;border-bottom:1px solid var(--hair);text-align:left;vertical-align:top}
+.alm-t th{position:sticky;top:0;background:var(--surface);font-size:13px;color:var(--muted);white-space:nowrap}
+.alm-t .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.alm-t tbody tr[data-k]{cursor:pointer}.alm-t tr.sel{background:color-mix(in srgb,var(--cy) 14%,var(--surface))}
+.alm-t tr.neg td{color:var(--bad)}.alm-t tr.zero td{color:var(--muted)}
+.alm-mov td{background:var(--raise);padding:10px}
+.alm-cfg{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;padding:0 12px 12px}
+.alm-cfg fieldset{border:1px solid var(--hair);border-radius:var(--r);padding:8px 10px}
+.alm-cfg select{width:100%;min-height:40px}
+.ch-row{display:flex;flex-direction:column;gap:4px;align-items:flex-start;cursor:default}
+.ch-row .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.cfpanel{margin-top:8px}
+@media (min-width:900px){.alm .sfpanel{position:static;width:auto;box-shadow:none}#tab-almacen .table-wrap{max-height:calc(100dvh - 330px);overflow:auto}}

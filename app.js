@@ -471,7 +471,7 @@ async function switchCam() {
 })();
 
 /* ---------- Pestañas ---------- */
-const TAB_MOD = { scan: 'cab', search: 'cab', list: 'cab', routes: 'cab', library: 'cab', stats: 'cab', cbuscar: 'con', clista: 'con', cresumen: 'con' };
+const TAB_MOD = { scan: 'cab', search: 'cab', list: 'cab', routes: 'cab', library: 'cab', almacen: 'cab', cambios: 'cab', stats: 'cab', cbuscar: 'con', clista: 'con', cresumen: 'con' };
 const MOD_DEFAULT = { cab: 'scan', con: 'cbuscar' };
 $$('.sgrp').forEach(g => g.addEventListener('toggle', () => { if (g.open) $$('.sgrp').forEach(o => { if (o !== g) o.open = false; }); }));
 function navOpen(v) { $('#app').classList.toggle('nav-open', !!v); $('#btnNav').setAttribute('aria-expanded', !!v); }
@@ -483,7 +483,7 @@ function setTab(name) {
   if (was && was !== mod && $('#view').classList.contains('open')) closeCable();
   $('#app').dataset.tab = name; $('#app').dataset.mod = mod; LS.set('tab_' + mod, name);
   if (was !== mod) $$('.sgrp[data-mod]').forEach(g => { g.open = g.dataset.mod === mod; });
-  { const lg = $('.sgrp.lib'); if (lg) { if (name === 'library') $$('.sgrp').forEach(g => { g.open = g === lg; }); else if (lg.open) { lg.open = false; const mg = $('.sgrp[data-mod="' + mod + '"]'); if (mg) mg.open = true; } } }
+  { const lg = $('.sgrp.lib'); if (lg) { if (name === 'library' || name === 'almacen') $$('.sgrp').forEach(g => { g.open = g === lg; }); else if (lg.open) { lg.open = false; const mg = $('.sgrp[data-mod="' + mod + '"]'); if (mg) mg.open = true; } } }
   { const cur = $('.snav[data-tab="' + name + '"]'); $('#barSec').textContent = cur ? cur.querySelector('span').textContent : ''; }
   navOpen(false);
   $$('.tab,.snav[data-tab]').forEach(x => { const on = x.dataset.tab === name; x.classList.toggle('active', on); x.setAttribute('aria-selected', on); });
@@ -495,6 +495,8 @@ function setTab(name) {
   if (name === 'cresumen' && typeof renderCxStats === 'function') renderCxStats();
   if (name === 'clista' && typeof cxListPaint === 'function') cxListPaint();
   if (name === 'library' && typeof renderLibrary === 'function') renderLibrary();
+  if (name === 'almacen' && typeof almOnOpen === 'function') almOnOpen();
+  if (name === 'cambios' && typeof renderCambios === 'function') renderCambios();
 }
 $$('.tab,.snav[data-tab]').forEach(t => { t.dataset.mod = TAB_MOD[t.dataset.tab]; t.addEventListener('click', () => setTab(t.dataset.tab)); });
 $$('.snav[data-proxy]').forEach(b => b.addEventListener('click', () => navOpen(false)));
@@ -901,8 +903,8 @@ $('#vBody').addEventListener('click', async e => {
     await refreshFlags(); await renderCable(); toast('Nota guardada' + offlineNote());
     syncCloud(true);
   } else if (t.dataset.deln) {
-    if (!confirm('¿Borrar esta nota? Se borrará también para el resto del equipo.')) return;
     const n = await DB.get('notes', +t.dataset.deln);
+    if (!confirm(n.estado ? '¿Deshacer este status de campo? Se quita también para el resto del equipo.' : '¿Borrar esta nota? Se borrará también para el resto del equipo.')) return;
     if (n.synced && !(await cloudDelete('delNote', { id: n.uid }))) return;
     await DB.del('notes', n.id); await refreshFlags(); await renderCable();
   } else if (t.dataset.pdf) {
@@ -946,7 +948,7 @@ function fieldStatusCard(notes, canEd, syncMark) {
     ${e ? `<small>${who(cur)}</small><small>${esc(fsDetail(e))}</small>` : '<small>Todavía nadie ha marcado este cable en campo.</small>'}
     ${canEd ? '<div class="btn-row"><button class="btn primary" id="btnFieldSt">Cambiar status</button></div>' : ''}
     ${hist.length ? `<details class="fs-hist" ${hist.length > 1 ? '' : 'open'}><summary>Historial de status <small class="muted">${hist.length}</small></summary>
-      ${hist.map(n => `<div class="fs-row"><span class="fs-pill ${fsCls(n.estado.tipo)}">${esc(FS_ES[n.estado.tipo] || n.estado.tipo)}</span><div><div>${esc(fsDetail(n.estado))}</div><small>${who(n)} ${syncMark(n)}</small></div>${adm ? `<button class="btn small danger" data-deln="${n.id}">Borrar</button>` : ''}</div>`).join('')}
+      ${hist.map(n => `<div class="fs-row"><span class="fs-pill ${fsCls(n.estado.tipo)}">${esc(FS_ES[n.estado.tipo] || n.estado.tipo)}</span><div><div>${esc(fsDetail(n.estado))}</div><small>${who(n)} ${syncMark(n)}${n.rev === 'Imputado' ? ' <span class="sync ok">Imputado</span>' : ' <span class="sync wait">Por imputar</span>'}</small></div>${canEd && (adm || !n.author || n.author === cloud.author()) ? `<button class="btn small danger" data-deln="${n.id}">Deshacer</button>` : ''}</div>`).join('')}
     </details>` : ''}
   </div>`;
 }
@@ -1609,7 +1611,8 @@ async function syncCloud(silent) {
     const notes = await DB.all('notes'), files = await DB.all('files');
     const nUid = new Set(notes.map(x => x.uid)), fUid = new Set(files.map(x => x.uid));
     const rn = new Set(s.notes.map(x => x.id)), rf = new Set(s.files.map(x => x.uid));
-    for (const n of s.notes) if (!nUid.has(n.id)) await DB.put('notes', { uid: n.id, tag: n.tag, text: n.text, date: n.date, author: n.author, synced: true, ...(n.estado ? { estado: JSON.parse(n.estado) } : {}) });
+    for (const n of s.notes) if (!nUid.has(n.id)) await DB.put('notes', { uid: n.id, tag: n.tag, text: n.text, date: n.date, author: n.author, rev: n.rev || '', synced: true, ...(n.estado ? { estado: JSON.parse(n.estado) } : {}) });
+    for (const n of notes) { const sn = s.notes.find(x => x.id === n.uid); if (sn && (n.rev || '') !== (sn.rev || '')) { n.rev = sn.rev || ''; await DB.put('notes', n); } }
     for (const f of s.files) if (!fUid.has(f.uid)) await DB.put('files', { uid: f.uid, tag: f.tag, kind: f.kind, name: f.name, type: f.mime, date: f.date, author: f.author, synced: true });
     for (const n of notes) if (n.synced && !rn.has(n.uid)) await DB.del('notes', n.id);          // borrada por otra persona
     for (const f of files) if (f.synced && !rf.has(f.uid)) await DB.del('files', f.id);

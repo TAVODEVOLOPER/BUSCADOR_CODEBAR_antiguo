@@ -4,7 +4,7 @@
    Las ediciones se guardan en el teléfono, se suben solas (aunque no haya cobertura) y quedan en el historial. */
 let cxFields = LS.get('cxFields', null);   // null = mostrar todos los campos en la ficha
 let cxPickOpen = false;
-const CX = { data: null, ci: new Map(), ti: 0, idx: new Map(), hay: [], q: [], qText: '', st: '', lim: 120, sel: '', draft: {}, pulling: false, src: 'sheet', pmap: new Map(), av: '', unlock: new Set(), list: [], newKey: '', newIdx: [], newHay: [] };
+const CX = { data: null, ci: new Map(), ti: 0, idx: new Map(), hay: [], q: [], qText: '', st: '', lim: 120, sel: '', draft: {}, pulling: false, src: 'sheet', who: '', pmap: new Map(), av: '', unlock: new Set(), list: [], newKey: '', newIdx: [], newHay: [] };
 
 const cxStCls = s => { s = String(s || '').toUpperCase(); return s === 'IMPUTADO' ? 'st-ok' : (s === 'FALTA' || s === 'NO ENCONTRADO') ? 'st-bad' : (s === '' || s === 'REASIGNADO') ? 'st-na' : 'st-warn'; };
 const cxToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -101,13 +101,16 @@ function cxSides(r) {
   return [f !== undefined ? r[f] : '', t !== undefined ? r[t] : ''];
 }
 const cxAv = r => { const [a, b] = cxSides(r); return ((String(a).toUpperCase() === 'IMPUTADO') + (String(b).toUpperCase() === 'IMPUTADO')) * 50; };
+CX.cf = new ColFilter({ id: 'cxcf', esc, norm: x => String(x).toLowerCase(), columns: () => CX.data.cols, rows: () => CX.data.rows, defCol: () => cxCol('STATUS_FROM') ?? 0, onChange: () => { CX.lim = 120; renderCxSearch(); } });
 function cxHits() {
   const q = CX.qText.trim().toLowerCase(), out = [];
   CX.data.rows.forEach((r, i) => {
     if (CX.st) { const [a, b] = cxSides(r); if (CX.st === '(sin status)' ? (a || b) : (a !== CX.st && b !== CX.st)) return; }
     if (CX.av !== '' && String(cxAv(r)) !== CX.av) return;
     if (CX.src === 'pend' && !CX.pmap.has(norm(r[CX.ti]))) return;
-    if (q && !q.split(/\s+/).every(w => CX.hay[i].includes(w))) return;
+    if (!CX.cf.test(r)) return;
+    if (q && !(CX.cf.sc ? CX.cf.matches(r, q, x => String(x).toLowerCase()) : q.split(/\s+/).every(w => CX.hay[i].includes(w)))) return;
+    if (CX.src === 'pend' && CX.who) { const o = CX.pmap.get(norm(r[CX.ti])); if (![...o.values()].some(e => e.who === CX.who)) return; }
     out.push(i);
   });
   return out;
@@ -147,9 +150,12 @@ function renderCxSearch() {
   if (!$('#cxQ')) {
     root.innerHTML = `<div class="filters cx-srcs" id="cxSrcs"></div>
       <label class="field"><span id="cxQLbl">Buscar cable, tag, área u observación</span><input id="cxQ" type="search" placeholder="Parte del tag, por ejemplo CKA32-BR03" autocomplete="off" value="${esc(CX.qText)}"></label>
+      <div id="cxCF"></div>
       <div class="filters" id="cxChips"></div><div class="cx-pendbar" id="cxPendBar" hidden></div><div class="sfbar"><button class="filter add" id="cxAddAll" type="button" hidden></button></div><p class="help" id="cxCount"></p><div id="cxRes" class="rows"></div>`;
   }
   const nPend = CX.pmap.size, isPend = CX.src === 'pend';
+  if (!$('#cxCF').firstChild) CX.cf.mount($('#cxCF'));
+  $('#cxCF').hidden = isNew; if (!isNew) { CX.cf.label(); CX.cf.chips(); }
   $('#cxSrcs').innerHTML = `<button class="filter ${isNew || isPend ? '' : 'on'}" data-cxsrc="sheet">Hoja CONEXIONADO</button><button class="filter ${isPend ? 'on' : ''}" data-cxsrc="pend" title="Avances de campo que faltan por pasar al sistema externo">Por imputar ${nPend}</button><button class="filter ${isNew ? 'on' : ''}" data-cxsrc="new">Nuevos del CC_SCHEDULE${nb ? ' ' + nNew.toLocaleString('es-ES') : ''}</button>`;
   $('#cxQLbl').textContent = isNew ? 'Buscar cable nuevo por tag, área o sistema' : 'Buscar cable, tag, área u observación';
   const addAll = $('#cxAddAll');
@@ -179,7 +185,7 @@ function renderCxSearch() {
     + [['0', '0 %', 'ninguna punta'], ['50', '50 %', 'una punta'], ['100', '100 %', 'las dos puntas']].map(([k, n, t]) => `<button class="filter ${CX.av === k ? 'on' : ''}" data-av="${k}" title="${t} imputada">${n} ${av[k]}</button>`).join('')
     + ests.map(s => `<button class="filter ${CX.st === s ? 'on' : ''}" data-st="${esc(s)}">${esc(s === '(sin status)' ? 'Sin status' : sentence(s))} ${counts.get(s)}</button>`).join('');
   $('#cxCount').textContent = `${hits.length.toLocaleString('es-ES')} de ${d.rows.length.toLocaleString('es-ES')}${pend ? ` · ${pend} cambio${pend > 1 ? 's' : ''} por subir` : ''}`;
-  addAll.hidden = !hits.length || !(CX.st || CX.av !== '' || CX.qText.trim()); addAll.textContent = `Añadir los ${hits.length.toLocaleString('es-ES')} a la lista`;
+  addAll.hidden = !hits.length || !(CX.st || CX.av !== '' || CX.qText.trim() || CX.cf.active() || CX.src === 'pend'); addAll.textContent = `Añadir los ${hits.length.toLocaleString('es-ES')} a la lista`;
   $('#cxRes').innerHTML = shown.map(i => {
     const r = d.rows[i], [a, b] = cxSides(r), tag = r[CX.ti];
     const cls = (a === 'IMPUTADO' && b === 'IMPUTADO') ? 'st-ok' : [a, b].some(x => cxStCls(x) === 'st-bad') ? 'st-bad' : 'st-warn';
@@ -204,8 +210,8 @@ function openCx(tag) {
 function cxEmpty() { CX.sel = ''; $('#vBody').innerHTML = '<div class="d-empty"><h2>Ningún cable abierto</h2><p>Busca un cable y aquí verás sus datos de conexionado y podrás editar los campos verdes.</p></div>'; $('#vAddList').hidden = true; }
 function cxHistory(tag) {
   const k = norm(tag), out = [];
-  (CX.data.log || []).forEach(e => { if (norm(e[1]) === k) out.push({ date: e[0], col: e[2], from: e[3], to: e[4], who: e[5], est: e[6] || '' }); });
-  CX.q.filter(x => !x.synced && norm(x.cable) === k).forEach(x => Object.entries(x.changes).forEach(([c, v]) => out.push({ date: x.date.slice(0, 16).replace('T', ' '), col: c, from: (x.before || {})[c] || '', to: v, who: x.author, pend: true })));
+  (CX.data.log || []).forEach(e => { if (norm(e[1]) === k) out.push({ date: e[0], col: e[2], from: e[3], to: e[4], who: e[5], est: e[6] || '', id: e[7] || '' }); });
+  CX.q.filter(x => !x.synced && norm(x.cable) === k).forEach(x => Object.entries(x.changes).forEach(([c, v]) => out.push({ date: x.date.slice(0, 16).replace('T', ' '), col: c, from: (x.before || {})[c] || '', to: v, who: x.author, pend: true, qid: x.id })));
   return out.sort((a, b) => b.date.localeCompare(a.date));
 }
 /* STATUS_FROM y STATUS_TO usan la lista del Sheet; otros STATUS (por ejemplo STATUS_CONEX) usan los valores que ya tiene su columna */
@@ -262,7 +268,7 @@ function renderCx(keepFocus) {
     ${inCab ? '<div class="btn-row"><button class="btn" id="cxToCab">Abrir en Cableado</button></div>' : ''}
     <section class="cx-hist"><h3>Historial de cambios <small class="muted">${hist.length}</small></h3>
       <p class="help">Los cambios se guardan en la hoja CONEXIONADO_LOG de tu Google Sheet, con fecha y nombre. ${cxAdm() ? 'Como administrador puedes deshacer cada cambio.' : 'Solo el administrador puede deshacer cambios.'}</p>
-      ${hist.map(h => `<div class="fs-row"><div><div><b>${esc(h.col.replace(/_/g, ' '))}</b>: ${h.from ? esc(fmtVal(h.from)) : '<i>vacío</i>'} → ${h.to ? esc(fmtVal(h.to)) : '<i>vacío</i>'}</div><small>${esc(h.date)}${h.who ? ', ' + esc(h.who) : ''}${h.pend ? ' <span class="sync wait">Pendiente de subir</span>' : h.est === 'Pendiente' ? ' <span class="sync wait">Por imputar</span>' : h.est === 'Imputado' ? ' <span class="sync ok">Imputado</span>' : h.est === 'Descartado' ? ' <span class="sync">Descartado</span>' : ''}</small></div>${cxAdm() && can && !h.pend && cxCol(h.col) !== undefined ? `<button class="btn small quiet" data-cx-undo="${esc(h.col)}" data-v="${esc(h.from)}">Deshacer</button>` : ''}</div>`).join('') || '<p class="empty">Todavía no hay cambios hechos desde la app.</p>'}
+      ${hist.map(h => `<div class="fs-row"><div><div><b>${esc(h.col.replace(/_/g, ' '))}</b>: ${h.from ? esc(fmtVal(h.from)) : '<i>vacío</i>'} → ${h.to ? esc(fmtVal(h.to)) : '<i>vacío</i>'}</div><small>${esc(h.date)}${h.who ? ', ' + esc(h.who) : ''}${h.pend ? ' <span class="sync wait">Pendiente de subir</span>' : h.est === 'Pendiente' ? ' <span class="sync wait">Por imputar</span>' : h.est === 'Imputado' ? ' <span class="sync ok">Imputado</span>' : h.est === 'Descartado' ? ' <span class="sync">Descartado</span>' : ''}</small></div>${cxUndoBtn(h, can)}</div>`).join('') || '<p class="empty">Todavía no hay cambios hechos desde la app.</p>'}
     </section>`;
 }
 
@@ -273,7 +279,12 @@ function cxPendBar(hits, on) {
   const ids = cxPendIds(hits);
   b.hidden = false;
   b.innerHTML = `<p class="help">Avances reportados en campo que aún faltan por pasar al sistema externo. No modifican la hoja CONEXIONADO.</p>
+    ${cxWhoSel()}
     <div class="btn-row"><button class="btn primary" id="cxPendPdf" ${hits.length ? '' : 'disabled'}>PDF de avances (${hits.length})</button>${cxAdm() ? `<button class="btn" id="cxPendDone" ${ids.length ? '' : 'disabled'}>Marcar los ${hits.length} como imputados</button>` : ''}</div>`;
+}
+function cxWhoSel() {
+  const who = new Set(); CX.pmap.forEach(o => o.forEach(e => { if (e.who) who.add(e.who); }));
+  return who.size > 1 || CX.who ? `<label class="field"><span>Quién lo reportó</span><select id="cxWho"><option value="">Todo el personal</option>${[...who].sort().map(w => `<option ${CX.who === w ? 'selected' : ''}>${esc(w)}</option>`).join('')}</select></label>` : '';
 }
 function cxPendIds(hits) { const out = []; hits.forEach(i => { const o = CX.pmap.get(norm(CX.data.rows[i][CX.ti])); if (o) o.forEach(e => out.push(...e.ids)); }); return out; }
 async function cxMarcar(ids, estado) {
@@ -283,6 +294,24 @@ async function cxMarcar(ids, estado) {
 }
 
 /* ---------- elegir qué campos se ven en la ficha ---------- */
+const cxMine = who => !!who && who === cloud.author();
+function cxUndoBtn(h, can) {
+  if (!can) return '';
+  if (h.pend) return cxMine(h.who) || cxAdm() ? `<button class="btn small quiet" data-cx-qundo="${esc(h.qid)}" data-col="${esc(h.col)}">Deshacer</button>` : '';
+  if (h.est === 'Pendiente' && h.id) return cxAdm() || cxMine(h.who) ? `<button class="btn small quiet" data-cx-undoid="${esc(h.id)}">Deshacer</button>` : '';
+  return cxAdm() && cxCol(h.col) !== undefined && h.est !== 'Deshecho' && h.est !== 'Descartado' ? `<button class="btn small quiet" data-cx-undo="${esc(h.col)}" data-v="${esc(h.from)}">Deshacer</button>` : '';
+}
+async function cxUndoId(id) {
+  try { await apiPost('undoAvance', { ids: [id], author: cloud.author() }); await pullCx(true); toast('Cambio deshecho'); }
+  catch (e) { toast('No se pudo deshacer: ' + e.message, 5000); }
+}
+async function cxUndoQueued(qid, col) {   // todavía no subió: se quita del teléfono
+  const it = CX.q.find(x => x.id === qid); if (!it) return;
+  const i = CX.idx.get(norm(it.cable)), ci = CX.ci.get(col);
+  if (i !== undefined && ci !== undefined) CX.data.rows[i][ci] = (it.before || {})[col] || '';
+  delete it.changes[col]; if (!Object.keys(it.changes).length) CX.q = CX.q.filter(x => x !== it);
+  await DB.put('meta', CX.q, 'conexQ'); cxBuildPend(); if (i !== undefined) CX.hay[i] = CX.data.rows[i].join(' ').toLowerCase(); cxRepaint(); toast('Cambio deshecho');
+}
 function cxPendFicha(tag) {
   const o = CX.pmap.get(norm(tag)); if (!o) return '';
   const ids = []; o.forEach(e => ids.push(...e.ids));
@@ -366,6 +395,7 @@ function cxRepaint() {
 }
 
 /* ---------- eventos ---------- */
+document.addEventListener('change', e => { if (e.target.id === 'cxWho') { CX.who = e.target.value; CX.lim = 120; renderCxSearch(); } });
 document.addEventListener('input', e => {
   if (e.target.id === 'cxQ') { CX.qText = e.target.value; CX.lim = 120; renderCxSearch(); const q = $('#cxQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
 });
@@ -386,7 +416,9 @@ document.addEventListener('click', async e => {
 $('#vBody').addEventListener('click', e => {
   const t = e.target.closest('button'); if (!t || !CX.sel) return;
   const tag = CX.sel;
-  if (t.dataset.cxMark !== undefined || t.dataset.cxDrop !== undefined) { const tg = t.dataset.cxMark ?? t.dataset.cxDrop, o = CX.pmap.get(norm(tg)), ids = []; if (o) o.forEach(e => ids.push(...e.ids)); if (confirm(t.dataset.cxMark !== undefined ? '¿Ya está imputado en el sistema externo?' : '¿Descartar estos avances?')) cxMarcar(ids, t.dataset.cxMark !== undefined ? 'Imputado' : 'Descartado'); }
+  if (t.dataset.cxUndoid !== undefined) { if (confirm('¿Deshacer este cambio? Se quita de los avances por imputar.')) cxUndoId(t.dataset.cxUndoid); }
+  else if (t.dataset.cxQundo !== undefined) { if (confirm('¿Deshacer este cambio?')) cxUndoQueued(t.dataset.cxQundo, t.dataset.col); }
+  else if (t.dataset.cxMark !== undefined || t.dataset.cxDrop !== undefined) { const tg = t.dataset.cxMark ?? t.dataset.cxDrop, o = CX.pmap.get(norm(tg)), ids = []; if (o) o.forEach(e => ids.push(...e.ids)); if (confirm(t.dataset.cxMark !== undefined ? '¿Ya está imputado en el sistema externo?' : '¿Descartar estos avances?')) cxMarcar(ids, t.dataset.cxMark !== undefined ? 'Imputado' : 'Descartado'); }
   else if (t.dataset.cxPk !== undefined) { const all = CX.data.cols.filter((c, ci) => ci !== CX.ti); cxPickOpen = true; cxSetFields(t.dataset.cxPk === 'all' ? null : t.dataset.cxPk === 'ed' ? all.filter(c => c.edit).map(c => c.name) : []); }
   else if (t.id === 'cxCopy') { navigator.clipboard.writeText(tag).then(() => toast('Tag copiado'), () => toast('No se pudo copiar el tag')); }
   else if (t.id === 'cxToCab') { setTab('search'); openCable(IDX.get(norm(tag)), true); }
