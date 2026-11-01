@@ -8,6 +8,12 @@ const cxStCls = s => { s = String(s || '').toUpperCase(); return s === 'IMPUTADO
 const cxToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const cxCol = n => CX.ci.get(n);
 const cxCan = () => typeof canConex === 'function' && canConex();
+const cxAdm = () => typeof cloud !== 'undefined' && cloud.admin && cloud.admin();
+const cxIsWeek = n => /SEM|WEEK/i.test(n);
+const cxGrp = c => /^OBSERV/i.test(c.name) ? '' : String(c.group || '').toUpperCase();
+/* una sección FROM / TO con STATUS IMPUTADO queda bloqueada (solo la edita el administrador) */
+function cxLocked(g, r) { if (g !== 'FROM' && g !== 'TO') return false; const si = cxCol('STATUS_' + g); return si !== undefined && r[si] === 'IMPUTADO'; }
+function cxWeekNum(s) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); if (!m) return ''; const t = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])), dn = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - dn); return String(Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7)); }
 
 function setCx(d) {
   CX.data = d;
@@ -53,7 +59,7 @@ async function cxSync(force) {
     for (const it of CX.q.filter(x => !x.synced)) {
       try { await apiPost('setConex', { id: it.id, cable: it.cable, changes: it.changes, author: cloud.author() }); it.synced = true; }
       catch (e) {
-        if (/permiso|no está en|no se puede editar|no válido|Falta/.test(e.message)) { it.synced = true; toast(`No se pudo guardar ${it.cable}: ${e.message}`, 6000); }
+        if (/permiso|no está en|no se puede editar|no válido|Falta|administrador|IMPUTADA/.test(e.message)) { it.synced = true; toast(`No se pudo guardar ${it.cable}: ${e.message}`, 6000); }
         else throw e;   // sin cobertura: se reintenta luego
       }
     }
@@ -141,11 +147,11 @@ function cxOptions(name) {
   if (/^STATUS_(FROM|TO)$/i.test(name)) return CX.data.estados || [];
   const ci = cxCol(name); return [...new Set(CX.data.rows.map(r => r[ci]).filter(Boolean))].sort();
 }
-function cxInput(c, v, can) {
+function cxInput(c, v, can, keep) {
   const val = CX.draft[c.name] !== undefined ? CX.draft[c.name] : v;
   if (!c.edit || !can) return `<span class="v ${v ? '' : 'none'}">${v ? esc(fmtVal(v)) : 'Sin dato'}</span>`;
   const id = 'cxf_' + c.name;
-  if (/^STATUS/i.test(c.name)) return `<div class="chips cx-opts" data-f="${esc(c.name)}">${['', ...cxOptions(c.name)].map(s => `<button type="button" class="filter ${val === s ? 'on' : ''}" data-cx-set="${esc(s)}">${s ? esc(sentence(s)) : 'Vacío'}</button>`).join('')}</div>`;
+  if (/^STATUS/i.test(c.name)) return `<div class="chips cx-opts" data-f="${esc(c.name)}">${[...(keep && !cxAdm() ? [] : ['']), ...cxOptions(c.name)].map(s => `<button type="button" class="filter ${val === s ? 'on' : ''}" data-cx-set="${esc(s)}">${s ? esc(sentence(s)) : 'Vacío'}</button>`).join('')}</div>`;
   if (/^FECHA/i.test(c.name)) return `<input id="${id}" data-f="${esc(c.name)}" type="date" value="${esc(val)}">`;
   if (/OBSERV/i.test(c.name)) return `<textarea id="${id}" data-f="${esc(c.name)}" rows="3">${esc(val)}</textarea>`;
   return `<input id="${id}" data-f="${esc(c.name)}" type="text" inputmode="text" value="${esc(val)}" autocomplete="off">`;
@@ -161,12 +167,18 @@ function renderCx(keepFocus) {
     if (!gmap.has(g)) { const o = { g, cols: [] }; gmap.set(g, o); groups.push(o); }
     gmap.get(g).cols.push([c, ci]);
   });
-  groups.forEach(o => o.cols.sort((p, q) => (q[0].edit && can) - (p[0].edit && can)));   // primero lo editable
+  const cxEd = (c, r) => c.edit && can && !cxIsWeek(c.name) && (cxAdm() || !cxLocked(cxGrp(c), r));
+  groups.forEach(o => o.cols.sort((p, q) => cxEd(q[0], r) - cxEd(p[0], r)));   // primero lo editable
   groups.sort((a, b) => (a.g === '') - (b.g === ''));
   const gname = g => g === 'FROM' ? 'Origen (From)' : g === 'TO' ? 'Destino (To)' : g ? g : 'General';
-  const card = o => `<section class="cx-card ${o.g === 'FROM' ? 'from' : o.g === 'TO' ? 'to' : ''}"><h3>${esc(gname(o.g))}</h3>${o.cols.map(([c, ci]) => {
+  const card = o => `<section class="cx-card ${o.g === 'FROM' ? 'from' : o.g === 'TO' ? 'to' : ''}"><h3>${esc(gname(o.g))}${cxLocked(String(o.g).toUpperCase(), r) ? ' <small class="muted">imputado' + (cxAdm() ? '' : ', bloqueado') + '</small>' : ''}</h3>${o.cols.map(([c, ci]) => {
     const label = `<span class="n">${esc(c.name.replace(/_/g, ' '))}</span>`;
-    return c.edit && can ? `<div class="cx-f ed"><label>${label}${c.edit ? '<i class="cx-dot" title="Campo editable"></i>' : ''}</label>${cxInput(c, r[ci], can)}</div>`
+    const g = cxGrp(c), lock = cxLocked(g, r) && !cxAdm();
+    if (cxIsWeek(c.name)) {   // la semana se calcula sola desde la fecha del mismo lado
+      const fc = d.cols.findIndex(z => /^FECHA_/i.test(z.name) && cxGrp(z) === g), dv = fc >= 0 ? (CX.draft[d.cols[fc].name] !== undefined ? CX.draft[d.cols[fc].name] : r[fc]) : '', wv = cxWeekNum(dv) || r[ci];
+      return `<div class="kv"><span class="l">${esc(c.letter)}</span>${label}<span class="v ${wv ? '' : 'none'}">${wv ? esc(wv) + ' <small class="muted">automática</small>' : 'Sin dato'}</span></div>`;
+    }
+    return c.edit && can && !lock ? `<div class="cx-f ed"><label>${label}${c.edit ? '<i class="cx-dot" title="Campo editable"></i>' : ''}</label>${cxInput(c, r[ci], can, !!r[ci])}</div>`
       : `<div class="kv"><span class="l">${esc(c.letter)}</span>${label}${cxInput(c, r[ci], false)}</div>`;
   }).join('')}</section>`;
   const hist = cxHistory(tag);
@@ -178,7 +190,7 @@ function renderCx(keepFocus) {
     ${can ? `<div class="cx-save"><button class="btn primary" id="cxSaveBtn" ${dirty ? '' : 'disabled'}>Guardar cambios${dirty ? ` (${dirty})` : ''}</button><button class="btn" id="cxDiscard" ${dirty ? '' : 'disabled'}>Descartar</button><span class="muted">Se guarda con tu nombre y la fecha.</span></div>` : ''}
     ${inCab ? '<div class="btn-row"><button class="btn" id="cxToCab">Abrir en Cableado</button></div>' : ''}
     <section class="cx-hist"><h3>Historial de cambios <small class="muted">${hist.length}</small></h3>
-      ${hist.map(h => `<div class="fs-row"><div><div><b>${esc(h.col.replace(/_/g, ' '))}</b>: ${h.from ? esc(fmtVal(h.from)) : '<i>vacío</i>'} → ${h.to ? esc(fmtVal(h.to)) : '<i>vacío</i>'}</div><small>${esc(h.date)}${h.who ? ', ' + esc(h.who) : ''}${h.pend ? ' <span class="sync wait">Pendiente de subir</span>' : ''}</small></div></div>`).join('') || '<p class="empty">Todavía no hay cambios hechos desde la app.</p>'}
+      ${hist.map(h => `<div class="fs-row"><div><div><b>${esc(h.col.replace(/_/g, ' '))}</b>: ${h.from ? esc(fmtVal(h.from)) : '<i>vacío</i>'} → ${h.to ? esc(fmtVal(h.to)) : '<i>vacío</i>'}</div><small>${esc(h.date)}${h.who ? ', ' + esc(h.who) : ''}${h.pend ? ' <span class="sync wait">Pendiente de subir</span>' : ''}</small></div>${cxAdm() && can && !h.pend && cxCol(h.col) !== undefined ? `<button class="btn small quiet" data-cx-undo="${esc(h.col)}" data-v="${esc(h.from)}">Deshacer</button>` : ''}</div>`).join('') || '<p class="empty">Todavía no hay cambios hechos desde la app.</p>'}
     </section>`;
 }
 
@@ -244,10 +256,12 @@ $('#vBody').addEventListener('click', e => {
   const tag = CX.sel;
   if (t.id === 'cxCopy') { navigator.clipboard.writeText(tag).then(() => toast('Tag copiado'), () => toast('No se pudo copiar el tag')); }
   else if (t.id === 'cxToCab') { setTab('search'); openCable(IDX.get(norm(tag)), true); }
+  else if (t.dataset.cxUndo !== undefined) { if (confirm('¿Deshacer este cambio y devolver el valor anterior?')) cxSave(tag, { [t.dataset.cxUndo]: t.dataset.v }); }
   else if (t.id === 'cxDiscard') { CX.draft = {}; renderCx(); }
   else if (t.id === 'cxSaveBtn') {
     const i = CX.idx.get(norm(tag)), ch = {};
     for (const [k, v] of Object.entries(CX.draft)) if ((CX.data.rows[i][CX.ci.get(k)] || '') !== v) ch[k] = v;
+    if (!cxAdm()) for (const k of Object.keys(ch)) if (!ch[k] && (CX.data.rows[i][CX.ci.get(k)] || '')) { delete ch[k]; toast('Solo el administrador puede borrar datos'); }
     if (!Object.keys(ch).length) { CX.draft = {}; return renderCx(); }
     cxSave(tag, ch);
   } else if (t.dataset.cxSet !== undefined) {

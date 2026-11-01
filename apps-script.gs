@@ -101,6 +101,7 @@ function handle_(p) {
     if (p.action === 'setConex') {
       if (!canConex) throw new Error('Tu código no tiene permiso para editar el conexionado');
       if (me) p.author = me.nombre;
+      p.adm = adm;   // lo decide el servidor, nunca el teléfono
     }
     if (/^(addNote|delNote|upload|delFile|clearScans)$/.test(p.action)) {
       if (!canEdit) throw new Error('Tu código no tiene permiso para editar notas, fotos ni status');
@@ -333,6 +334,11 @@ function getConex_(clientHash) {
   if (clientHash && clientHash === hash) return { ok: true, same: true, hash: hash };
   return { ok: true, hash: hash, cols: cols, rows: rows, log: log, estados: estados, generado: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm') };
 }
+function isoWeekNum_(d) {
+  var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())), dn = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dn);
+  return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+}
 function setConex_(p) {
   if (!p.cable || !p.changes) throw new Error('Faltan datos del conexionado');
   var sh = conexSheet_(), L = conexLayout_(sh), tz = Session.getScriptTimeZone();
@@ -340,6 +346,16 @@ function setConex_(p) {
   var col = sh.getRange(L.hr + 2, L.ti + 1, Math.max(1, sh.getLastRow() - L.hr - 1), 1).getValues(), row = -1;
   for (var i = 0; i < col.length; i++) { if (String(col[i][0]).toUpperCase().replace(/\s+/g, '') === key) { row = L.hr + 2 + i; break; } }
   if (row < 0) throw new Error('El cable ' + p.cable + ' no está en ' + HOJA_CONEX);
+  var cur = sh.getRange(row, 1, 1, L.head.length).getValues()[0];
+  // reglas: una sección (FROM / TO) con STATUS IMPUTADO queda bloqueada, y solo el administrador puede borrar datos
+  Object.keys(p.changes).forEach(function (name) {
+    var ci0 = L.head.indexOf(name); if (ci0 < 0) return;
+    var g0 = String(L.grp[ci0] || '').toUpperCase(), si = L.head.indexOf('STATUS_' + g0);
+    if (!p.adm && si >= 0 && (g0 === 'FROM' || g0 === 'TO') && String(cur[si]).trim() === 'IMPUTADO')
+      throw new Error('La sección ' + g0 + ' ya está IMPUTADA: solo el administrador puede editarla');
+    var nv = String(p.changes[name] == null ? '' : p.changes[name]).trim(), old = cur[ci0];
+    if (!p.adm && !nv && String(old).trim() !== '') throw new Error('Solo el administrador puede borrar datos (' + name + ')');
+  });
   var estados = conexEstados_(), lsh = sheet_(HOJA_CONEX_LOG, H_CONEX_LOG), now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm'), done = 0;
   Object.keys(p.changes).forEach(function (name) {
     var ci = L.head.indexOf(name);
@@ -353,6 +369,13 @@ function setConex_(p) {
     if (/^FECHA_/.test(name)) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(val); out = m ? new Date(+m[1], +m[2] - 1, +m[3]) : ''; }
     else if (/^\d+$/.test(val)) out = Number(val);
     cell.setValue(out);
+    if (/^FECHA_/.test(name)) {   // la semana se calcula sola a partir de la fecha (si su celda no tiene fórmula)
+      var gw = String(L.grp[ci] || '').toUpperCase(), wk = (out instanceof Date) ? isoWeekNum_(out) : '';
+      L.head.forEach(function (hn, wi) {
+        if (!/SEM|WEEK/i.test(hn) || String(L.grp[wi] || '').toUpperCase() !== gw) return;
+        var wc = sh.getRange(row, wi + 1); if (!wc.getFormula()) wc.setValue(wk);
+      });
+    }
     lsh.appendRow([lid, now, String(p.cable), name, before instanceof Date ? Utilities.formatDate(before, tz, 'yyyy-MM-dd') : String(before), val, String(p.author || '')]);
     done++;
   });

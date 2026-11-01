@@ -150,3 +150,8 @@ apps-script.gs                    servidor en tu Google (se pega en Apps Script)
 tools/xlsx_a_json.py              Excel a data.json (solo si no usas Google)
 extras/data.json                  copia de la tabla (NO subir a GitHub)
 ```
+
+### Conexionado: reglas (v1.16.0)
+- La columna de semana (nombre con SEM o WEEK) se calcula sola con la fecha de su lado (From / To). Si su celda tiene fórmula en el Sheet, se respeta la fórmula.
+- Si STATUS_FROM (o STATUS_TO) está en IMPUTADO, esa sección queda bloqueada. Solo el administrador la puede editar.
+- Solo el administrador puede borrar datos (dejar un campo vacío) y usar «Deshacer» en el historial.
