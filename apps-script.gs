@@ -56,6 +56,7 @@ var CARPETA_FOTOS = 'CableScan_Fotos';
 var CARPETA_PDF = 'CableScan_PDF';
 var CARPETA_ISO = 'CableScan_PDF_Isometrico_Bandeja';
 var CARPETA_TRANSIT = 'CableScan_PDF_Transit';
+var CARPETA_SEP = 'CableScan_PDF_Separadores';
 var ADMIN_TOKEN = '';           // clave SOLO TUYA para subir y quitar PDF desde la app. Vacía = esa función está desactivada.
 var PDF_FOLDER_ID = '';          // opcional: ID de una carpeta de Drive que ya tengas con los PDF
 var MAX_PDF_BYTES = 30 * 1024 * 1024;
@@ -90,7 +91,7 @@ function handle_(p) {
       if (!me || !me.activo) return out_({ ok: false, login: true, error: 'Código de personal no válido o desactivado' });
     }
     var canEdit = !list.length || isAdmin_(p) || !!(me && me.notas);
-    if (/^(addNote|delNote|upload|delFile)$/.test(p.action)) {
+    if (/^(addNote|delNote|upload|delFile|clearScans)$/.test(p.action)) {
       if (!canEdit) throw new Error('Tu código no tiene permiso para editar notas, fotos ni status');
       if (me) p.author = me.nombre;
     }
@@ -106,7 +107,7 @@ function handle_(p) {
       case 'pdf': return out_(getPdf_(p.id));
       case 'uploadPdf': case 'delPdf':
         if (!isAdmin_(p)) throw new Error(ADMIN_TOKEN ? 'Clave de administrador incorrecta' : 'Subir PDF desde la app está desactivado: pon un ADMIN_TOKEN en el script');
-      case 'addNote': case 'delNote': case 'upload': case 'delFile': case 'scans':
+      case 'addNote': case 'delNote': case 'upload': case 'delFile': case 'scans': case 'clearScans':
         var lock = LockService.getScriptLock();
         lock.waitLock(25000);
         try { return out_(write_(p)); } finally { lock.releaseLock(); }
@@ -183,6 +184,7 @@ function namedFolder_(propKey, name) {
 function fotosFolder_() { return namedFolder_('FOLDER_FOTOS', CARPETA_FOTOS); }
 function isoFolder_() { return namedFolder_('FOLDER_ISO', CARPETA_ISO); }
 function transitFolder_() { return namedFolder_('FOLDER_TRANSIT', CARPETA_TRANSIT); }
+function sepFolder_() { return namedFolder_('FOLDER_SEP', CARPETA_SEP); }
 function pdfFolder_() { return PDF_FOLDER_ID ? DriveApp.getFolderById(PDF_FOLDER_ID) : namedFolder_('FOLDER_PDF', CARPETA_PDF); }
 
 /** Ejecútala una vez desde el editor: concede permisos, crea pestañas y carpetas e indexa los PDF. */
@@ -197,6 +199,7 @@ function autorizar() {
   pdfFolder_();
   isoFolder_();
   transitFolder_();
+  sepFolder_();
   indexarPdf();
   Logger.log('Listo. Ya puedes implementar como aplicación web.');
 }
@@ -216,6 +219,7 @@ function indexarPdf() {
   walk(pdfFolder_(), 'pulling', '');
   walk(isoFolder_(), 'iso', '');
   walk(transitFolder_(), 'transit', '');
+  walk(sepFolder_(), 'sep', '');
   var sh = sheet_(HOJA_PDF, H_PDF);
   sh.getRange(1, 1, 1, H_PDF.length).setValues([H_PDF]);
   if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, H_PDF.length).clearContent();
@@ -480,7 +484,7 @@ function write_(p) {
       var bytes = Utilities.base64Decode(p.data);
       if (bytes.length > MAX_PDF_BYTES) throw new Error('El PDF pesa más de 30 MB');
       var base = String(p.name || '').replace(/\.pdf$/i, '').replace(/[\/\\]+/g, '-').trim();
-      var ptipo = p.tipo === 'iso' ? 'iso' : (p.tipo === 'transit' ? 'transit' : 'pulling');
+      var ptipo = /^(iso|transit|sep)$/.test(p.tipo) ? p.tipo : 'pulling';
       var pname, dest;
       if (ptipo === 'pulling') {
         if (!p.tag) throw new Error('Falta el tag del cable');
@@ -490,7 +494,7 @@ function write_(p) {
       } else {
         if (!base) throw new Error('Falta el nombre del PDF');
         pname = base + '.pdf';
-        dest = ptipo === 'iso' ? isoFolder_() : transitFolder_();
+        dest = ptipo === 'iso' ? isoFolder_() : ptipo === 'sep' ? sepFolder_() : transitFolder_();
         var cf = String(p.carpeta || '').replace(/[\/\\]+/g, '-').trim();
         if (cf) { var it = dest.getFoldersByName(cf); dest = it.hasNext() ? it.next() : dest.createFolder(cf); }
       }
@@ -513,6 +517,11 @@ function write_(p) {
         try { DriveApp.getFileById(fid).setTrashed(true); } catch (e) { }
         sh.deleteRow(cell.getRow());
       }
+      return { ok: true };
+
+    case 'clearScans':
+      var shc = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(p.sheet || 'ESCANEOS');
+      if (shc && shc.getLastRow() > 1) shc.getRange(2, 1, shc.getLastRow() - 1, Math.max(1, shc.getLastColumn())).clearContent();
       return { ok: true };
 
     case 'scans':

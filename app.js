@@ -818,7 +818,7 @@ async function renderCable(animate) {
       <div class="marker ${animate ? 'pop' : ''}"><span class="sleeve"></span><span class="mk-body"><b>${esc(tag)}</b></span><button class="btn small quiet copy" id="btnCopyTag">Copiar</button></div>
       <div class="d-status ${statusClass(st)}"><i></i><div><b>${esc(st ? sentence(st) : 'Sin status')}</b>${stDate ? `<small>Desde ${esc(fmtVal(stDate))}</small>` : ''}</div></div>
     </div>
-    ${fieldStatusCard(notes, canEd)}
+    ${fieldStatusCard(notes, canEd, syncMark)}
 
     <label class="opt"><input type="checkbox" id="hideEmpty" ${hideEmpty ? 'checked' : ''}> Ocultar las columnas sin dato</label>
     <div class="kvs">${kv || '<p class="empty">No hay columnas elegidas. Pulsa Columnas para elegirlas.</p>'}</div>
@@ -836,7 +836,7 @@ async function renderCable(animate) {
       </div>
       <div class="sec"><h3>Notas</h3>
         ${canEd ? '<label class="field" style="margin-top:6px"><span>Nueva nota</span><textarea id="noteText" placeholder="Qué has visto o qué falta"></textarea></label><div class="btn-row"><button class="btn primary" id="saveNote">Guardar nota</button></div>' : '<p class="empty">Tu código no tiene permiso para añadir notas, fotos ni status. Puedes leer lo que hay.</p>'}
-        ${notes.map(n => `<div class="note ${n.estado ? 'st ' + (n.estado.tipo === 'COIL' ? 'coil' : '') : ''}"><div class="by"><span>${esc(new Date(n.date).toLocaleString('es-ES'))}${n.author ? ', ' + esc(n.author) : ''} ${syncMark(n)}</span>${canEd ? `<button class="btn small danger" data-deln="${n.id}">Borrar</button>` : ''}</div><p>${n.estado ? `<span class="fs-pill ${n.estado.tipo === 'COIL' ? 'coil' : ''}">${esc(n.estado.tipo)}</span>` : ''}${esc(n.estado ? n.text.replace(/^(TENDIDO|COIL) · /, '') : n.text)}</p></div>`).join('')}
+        ${notes.filter(n => !n.estado).map(n => `<div class="note"><div class="by"><span>${esc(new Date(n.date).toLocaleString('es-ES'))}${n.author ? ', ' + esc(n.author) : ''} ${syncMark(n)}</span>${canEd ? `<button class="btn small danger" data-deln="${n.id}">Borrar</button>` : ''}</div><p>${esc(n.text)}</p></div>`).join('')}
       </div>
     </div>`;
 
@@ -900,25 +900,45 @@ $('#vAddList').addEventListener('click', () => {
 
 /* ---------- Status de campo (tendido / coil): se guarda como una nota, no toca las tablas ---------- */
 const FS = { tag: '', tipo: '', from: '', to: '' };
-function fieldStatusCard(notes, canEd) {
-  const last = notes.find(n => n.estado);   // las notas ya vienen de la más nueva a la más antigua
-  const e = last && last.estado;
-  return `<div class="fs-card">${e ? `<span><span class="fs-pill ${e.tipo === 'COIL' ? 'coil' : ''}">${esc(e.tipo)}</span><b>Último status de campo</b></span>
-    <small>${esc(new Date(last.date).toLocaleString('es-ES'))}${last.author ? ', ' + esc(last.author) : ''}</small>
-    <small>${e.tipo === 'COIL' ? `Coil tendidos: ${esc(e.metros)} m. Motivo: ${esc(e.motivo)}. ` : ''}Miniruta from: ${esc(e.from)}. Miniruta to: ${esc(e.to)}.</small>` : '<b>Sin status de campo</b><small>Todavía nadie ha marcado este cable como tendido o coil.</small>'}
-    ${canEd ? '<div class="btn-row"><button class="btn primary" id="btnFieldSt">Cambiar status</button></div>' : ''}</div>`;
+const FS_ES = { TENDIDO: 'Tendido', COIL: 'Coil', MEDICION: 'Medición' };
+const fsCls = t => t === 'COIL' ? 'coil' : t === 'MEDICION' ? 'med' : '';
+const fsNum = v => parseFloat(String(v).replace(',', '.'));
+function fsDetail(e) {
+  const bits = [];
+  if (e.tipo === 'COIL') bits.push(`Tendido: ${e.metros} m`, `Motivo: ${e.motivo}`);
+  if (e.tipo === 'MEDICION') bits.push(`Medida de la ruta: ${e.metros} m`);
+  if (e.tipo !== 'MEDICION') bits.push(`Miniruta from: ${e.from}`, `Miniruta to: ${e.to}`);
+  return bits.join(' · ');
+}
+function fieldStatusCard(notes, canEd, syncMark) {
+  const hist = notes.filter(n => n.estado);   // ya vienen de la más nueva a la más antigua
+  const adm = cloud.admin();
+  const cur = hist[0], e = cur && cur.estado;
+  const who = n => `${esc(new Date(n.date).toLocaleString('es-ES'))}${n.author ? ', ' + esc(n.author) : ''}`;
+  return `<div class="fs-card">
+    <div class="fs-head">${e ? `<span class="fs-pill ${fsCls(e.tipo)}">${esc(FS_ES[e.tipo] || e.tipo)}</span><b>Status de campo actual</b>` : '<b>Sin status de campo</b>'}</div>
+    ${e ? `<small>${who(cur)}</small><small>${esc(fsDetail(e))}</small>` : '<small>Todavía nadie ha marcado este cable en campo.</small>'}
+    ${canEd ? '<div class="btn-row"><button class="btn primary" id="btnFieldSt">Cambiar status</button></div>' : ''}
+    ${hist.length ? `<details class="fs-hist" ${hist.length > 1 ? '' : 'open'}><summary>Historial de status <small class="muted">${hist.length}</small></summary>
+      ${hist.map(n => `<div class="fs-row"><span class="fs-pill ${fsCls(n.estado.tipo)}">${esc(FS_ES[n.estado.tipo] || n.estado.tipo)}</span><div><div>${esc(fsDetail(n.estado))}</div><small>${who(n)} ${syncMark(n)}</small></div>${adm ? `<button class="btn small danger" data-deln="${n.id}">Borrar</button>` : ''}</div>`).join('')}
+    </details>` : ''}
+  </div>`;
 }
 function fsValid() {
-  const ok = FS.tipo && FS.from && FS.to && (FS.tipo !== 'COIL' || (parseFloat($('#fsMetros').value.replace(',', '.')) > 0 && $('#fsMotivo').value.trim()));
+  const t = FS.tipo;
+  const ok = t && (t === 'MEDICION' ? fsNum($('#fsMedida').value) > 0
+    : FS.from && FS.to && (t !== 'COIL' || (fsNum($('#fsMetros').value) > 0 && $('#fsMotivo').value.trim())));
   $('#fsSave').disabled = !ok; return !!ok;
 }
 function fsPaint() {
   [['#fsTipo', FS.tipo], ['#fsFrom', FS.from], ['#fsTo', FS.to]].forEach(([s, v]) => $$(s + ' .filter').forEach(b => { b.classList.toggle('on', b.dataset.v === v); b.setAttribute('aria-pressed', b.dataset.v === v); }));
-  $('#fsCoil').hidden = FS.tipo !== 'COIL'; fsValid();
+  $('#fsCoil').hidden = FS.tipo !== 'COIL'; $('#fsMed').hidden = FS.tipo !== 'MEDICION'; $('#fsMini').hidden = FS.tipo === 'MEDICION';
+  $('#fsWho').textContent = `Se guardará con tu nombre${cloud.author() ? ' (' + cloud.author() + ')' : ''} y la fecha de hoy.`;
+  fsValid();
 }
 function openFieldStatus(tag) {
   Object.assign(FS, { tag, tipo: '', from: '', to: '' });
-  $('#fsTag').textContent = tag; $('#fsMetros').value = ''; $('#fsMotivo').value = '';
+  $('#fsTag').textContent = tag; $('#fsMetros').value = ''; $('#fsMotivo').value = ''; $('#fsMedida').value = '';
   fsPaint(); $('#fsModal').hidden = false;
 }
 $('#fsClose').addEventListener('click', () => { $('#fsModal').hidden = true; });
@@ -929,10 +949,10 @@ $('#fsForm').addEventListener('click', e => {
 $('#fsForm').addEventListener('input', fsValid);
 $('#fsSave').addEventListener('click', async () => {
   if (!fsValid()) return;
-  const coil = FS.tipo === 'COIL', metros = coil ? parseFloat($('#fsMetros').value.replace(',', '.')) : 0, motivo = coil ? $('#fsMotivo').value.trim() : '';
-  const estado = { tipo: FS.tipo, ...(coil ? { metros, motivo } : {}), from: FS.from, to: FS.to };
-  const text = `${FS.tipo} · ` + (coil ? `Coil tendidos: ${metros} m · Motivo: ${motivo} · ` : '') + `Miniruta from: ${FS.from} · Miniruta to: ${FS.to}`;
-  const tag = FS.tag;
+  const t = FS.tipo, tag = FS.tag;
+  const estado = t === 'MEDICION' ? { tipo: t, metros: fsNum($('#fsMedida').value) }
+    : { tipo: t, ...(t === 'COIL' ? { metros: fsNum($('#fsMetros').value), motivo: $('#fsMotivo').value.trim() } : {}), from: FS.from, to: FS.to };
+  const text = `${t} · ${fsDetail(estado)}`;
   await DB.put('notes', { uid: newUid(), tag, text, estado, date: new Date().toISOString(), author: cloud.author(), synced: false });
   $('#fsModal').hidden = true;
   await refreshFlags(); if (current >= 0) await renderCable();
@@ -1094,10 +1114,13 @@ $('#btnSheet').addEventListener('click', async () => {
     toast(`Enviadas ${j.added} filas a tu Google Sheet`, 3500);
   } catch (e) { toast('No se pudo enviar la lista: ' + e.message, 4500); }
 });
-$('#btnClear').addEventListener('click', () => {
+$('#btnClear').addEventListener('click', async () => {
   if (!scanList.length) return;
-  if (!confirm('¿Vaciar la lista de escaneos?')) return;
+  const sh = LS.get('sheetName', 'ESCANEOS') || 'ESCANEOS';
+  if (!confirm(cloud.on() ? `¿Vaciar la lista de escaneos? También se borran las filas de la pestaña ${sh} de tu Google Sheet.` : '¿Vaciar la lista de escaneos?')) return;
+  if (cloud.on() && !(await cloudDelete('clearScans', { sheet: sh }))) return;
   scanList = []; LS.set('scanList', scanList); renderList();
+  if (cloud.on()) toast('Lista vaciada, también en Google Sheets');
 });
 
 /* ---------- Lista de trabajo en PDF ---------- */

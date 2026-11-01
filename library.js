@@ -1,6 +1,6 @@
 /* Biblioteca de PDF útiles del proyecto: isométricos de bandeja y transit, ordenados por carpeta (subcarpetas de Drive) */
 const LB = { q: '', tipo: '', open: new Set() };
-const LB_T = { iso: 'Isométrico de bandeja', transit: 'Transit' };
+const LB_T = { iso: 'Isométrico de bandeja', transit: 'Transit', sep: 'Planos de separadores' };
 const lbNat = (a, b) => a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' });
 
 function renderLibrary() {
@@ -64,7 +64,7 @@ function lbUpload() {
     <div class="sheet-body fs-form">
       <label class="field"><span>Tipo</span><select id="luTipo">${Object.entries(LB_T).map(([k, v]) => `<option value="${k}" ${LB.tipo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="field"><span>Carpeta (por ejemplo, Nivel 3)</span><input id="luCat" list="luCats" type="text" autocomplete="off"><datalist id="luCats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label>
-      <label class="field"><span>Archivo PDF</span><input id="luFile" type="file" accept="application/pdf"></label>
+      <label class="field"><span>Archivos PDF (puedes elegir varios)</span><input id="luFile" type="file" accept="application/pdf" multiple></label>
       <p class="help">Si la carpeta no existe, se crea en tu Drive. Sin carpeta, queda en General.</p>
     </div>
     <div class="pdf-foot"><button class="btn primary" id="luGo" type="submit">Subir</button></div></form>`;
@@ -73,15 +73,26 @@ function lbUpload() {
   o.querySelector('#luX').onclick = close;
   o.querySelector('form').onsubmit = async e => {
     e.preventDefault();
-    const f = o.querySelector('#luFile').files[0];
-    if (!f) return toast('Elige un archivo PDF');
-    if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') return toast('Elige un archivo PDF');
-    if (f.size > 25 * 1024 * 1024) return toast('El PDF pesa más de 25 MB y no se puede subir desde la app', 5000);
+    const fl = [...o.querySelector('#luFile').files];
+    if (!fl.length) return toast('Elige al menos un archivo PDF');
+    const bad = fl.find(f => !/\.pdf$/i.test(f.name) && f.type !== 'application/pdf');
+    if (bad) return toast(`"${bad.name}" no es un PDF`, 4000);
+    const big = fl.find(f => f.size > 25 * 1024 * 1024);
+    if (big) return toast(`"${big.name}" pesa más de 25 MB y no se puede subir desde la app`, 5000);
     const btn = o.querySelector('#luGo'); btn.disabled = true;
+    const tipo = o.querySelector('#luTipo').value, carpeta = o.querySelector('#luCat').value.trim();
+    let done = 0;
     try {
-      toast(`Subiendo ${f.name}`, 60000);
-      await apiPost('uploadPdf', { tipo: o.querySelector('#luTipo').value, carpeta: o.querySelector('#luCat').value.trim(), name: f.name, data: await fileToB64(f) });
-      await syncCloud(true); close(); renderLibrary(); toast('PDF subido a la biblioteca', 4000);
-    } catch (err) { btn.disabled = false; toast('No se pudo subir el PDF: ' + err.message, 6000); }
+      for (const f of fl) {
+        toast(`Subiendo ${done + 1} de ${fl.length}: ${f.name}`, 60000);
+        await apiPost('uploadPdf', { tipo, carpeta, name: f.name, data: await fileToB64(f) });
+        done++;
+      }
+      await syncCloud(true); close(); renderLibrary(); toast(done > 1 ? `${done} PDF subidos a la biblioteca` : 'PDF subido a la biblioteca', 4000);
+    } catch (err) {
+      btn.disabled = false;
+      if (done) { await syncCloud(true); renderLibrary(); }
+      toast(`Se subieron ${done} de ${fl.length}. Falló "${fl[done].name}": ${err.message}`, 7000);
+    }
   };
 }

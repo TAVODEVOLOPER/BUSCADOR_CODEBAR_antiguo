@@ -263,15 +263,21 @@
     <form class="sheet-body fs-form" id="fsForm">
       <p class="marker fs-tag"><span class="sleeve"></span><span class="mk-body"><b id="fsTag"></b></span></p>
       <p class="chart-t">Status</p>
-      <div class="chips" id="fsTipo"><button type="button" class="filter" data-v="TENDIDO">Tendido</button><button type="button" class="filter" data-v="COIL">Coil</button></div>
+      <div class="chips" id="fsTipo"><button type="button" class="filter" data-v="TENDIDO">Tendido</button><button type="button" class="filter" data-v="COIL">Coil</button><button type="button" class="filter" data-v="MEDICION">Medición</button></div>
       <div id="fsCoil" hidden>
-        <label class="field"><span>Coil tendidos (m)</span><input id="fsMetros" type="number" inputmode="decimal" min="0" step="any"></label>
+        <label class="field"><span>Tendido (m)</span><input id="fsMetros" type="number" inputmode="decimal" min="0" step="any"></label>
         <label class="field"><span>Motivo de coil</span><textarea id="fsMotivo" placeholder="Por qué se deja en coil"></textarea></label>
       </div>
+      <div id="fsMed" hidden>
+        <label class="field"><span>Medida de la ruta en campo (m)</span><input id="fsMedida" type="number" inputmode="decimal" min="0" step="any"></label>
+      </div>
+      <div id="fsMini">
       <p class="chart-t">Miniruta from</p>
       <div class="chips" id="fsFrom"><button type="button" class="filter" data-v="SI">SI</button><button type="button" class="filter" data-v="NO">NO</button><button type="button" class="filter" data-v="NA">NA</button></div>
       <p class="chart-t">Miniruta to</p>
       <div class="chips" id="fsTo"><button type="button" class="filter" data-v="SI">SI</button><button type="button" class="filter" data-v="NO">NO</button><button type="button" class="filter" data-v="NA">NA</button></div>
+      </div>
+      <p class="help" id="fsWho"></p>
       <p class="help">Se guarda como una nota del cable y la ve todo el equipo. No cambia las tablas.</p>
     </form>
     <div class="pdf-foot"><button class="btn primary" id="fsSave" disabled>Guardar status</button></div>
