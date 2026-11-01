@@ -1529,7 +1529,7 @@ function ensureBlob(f) {
 async function cloudDelete(action, payload) {
   if (!cloud.on()) return true;
   try { await apiPost(action, payload); return true; }
-  catch (e) { toast('No se pudo borrar en la nube. Comprueba la conexión y vuelve a intentarlo.', 4500); return false; }
+  catch (e) { toast(/autor|administrador/.test(e.message) ? e.message : 'No se pudo borrar en la nube. Comprueba la conexión y vuelve a intentarlo.', 5000); return false; }
 }
 
 /* ---------- Entrar con código de personal (hoja PERSONAL) ---------- */

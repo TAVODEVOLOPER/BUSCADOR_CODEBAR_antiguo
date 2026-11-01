@@ -164,3 +164,13 @@ extras/data.json                  copia de la tabla (NO subir a GitHub)
 ### Conexionado (v1.18.0)
 - El Resumen cuenta todos los cables de instrumentación del CC_SCHEDULE (igual que Cableado). Los que todavía no tienen fila en CONEXIONADO salen como "Sin iniciar".
 - Los botones Guardar cambios y Descartar van al final de la ficha, sin flotar.
+
+### Seguridad (v1.19.0)
+La clave `DRAGADOS-ADMIN` va en config.js, que es público en GitHub Pages: no es un secreto. La seguridad real está en el servidor (Apps Script):
+- Sin códigos en la pestaña PERSONAL el servidor no sirve nada (`ABIERTO_SIN_PERSONAL = false`).
+- Freno a los intentos de adivinar códigos: tras 30 códigos incorrectos en 10 minutos se bloquean las entradas nuevas 10 minutos. Quien ya está dentro sigue trabajando. Todo queda en la pestaña SEGURIDAD_LOG (entradas, códigos incorrectos y bloqueos).
+- Todo texto de usuarios (notas, observaciones, tags, historial) se guarda como texto: un valor que empiece por `=`, `+`, `-` o `@` no se ejecuta como fórmula en el Sheet.
+- Límites de tamaño: notas 3000 caracteres, fotos solo JPG, PNG o WEBP de hasta 8 MB, hasta 5000 filas por envío.
+- Una nota o foto solo la borra su autor o un administrador.
+- La app declara una política de seguridad de contenido (CSP): solo carga código de su propio sitio y solo habla con script.google.com.
+- Recomendación: usa códigos de personal largos (8 o más caracteres, no consecutivos) y desactiva con NO a quien deje el proyecto.

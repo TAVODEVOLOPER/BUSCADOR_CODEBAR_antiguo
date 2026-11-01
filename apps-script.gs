@@ -61,6 +61,17 @@ var ADMIN_TOKEN = '';           // clave SOLO TUYA para subir y quitar PDF desde
 var PDF_FOLDER_ID = '';          // opcional: ID de una carpeta de Drive que ya tengas con los PDF
 var MAX_PDF_BYTES = 30 * 1024 * 1024;
 
+/* ---- seguridad ----
+   ABIERTO_SIN_PERSONAL: false = si la pestaña PERSONAL está vacía NO se sirve nada (solo el administrador con ADMIN_TOKEN).
+   MAX_FALLOS: códigos incorrectos permitidos en 10 minutos; al pasarlos se bloquean las entradas nuevas durante BLOQUEO_S segundos
+   (quien ya estaba dentro sigue trabajando). Todo queda en la pestaña SEGURIDAD_LOG. */
+var ABIERTO_SIN_PERSONAL = false;
+var MAX_FALLOS = 30;
+var BLOQUEO_S = 600;
+var MAX_FOTO_BYTES = 8 * 1024 * 1024;
+var HOJA_SEG = 'SEGURIDAD_LOG';
+var H_SEG = ['fecha', 'evento', 'detalle'];
+
 var H_NOTAS = ['id', 'tag', 'nota', 'fecha', 'autor', 'estado'];
 var HOJA_PERSONAL = 'PERSONAL';
 var H_PERSONAL = ['codigo', 'nombre', 'cargo', 'activo', 'editar_notas', 'editar_conexionado', 'admin'];
@@ -92,10 +103,14 @@ function handle_(p) {
     if (!p.token || p.token !== TOKEN) return out_({ ok: false, error: 'Clave incorrecta' });
     var list = personal_(), me = null;
     if (p.action !== 'ping' && list.length) {
-      me = findPerson_(list, p.user);
-      if (!me || !me.activo) return out_({ ok: false, login: true, error: 'Código de personal no válido o desactivado' });
+      var au = auth_(list, p.user);
+      if (au.fail) return out_({ ok: false, login: true, error: au.fail });
+      me = au.me;
     }
     var adm = isAdmin_(p) || !!(me && me.admin);
+    if (p.action !== 'ping' && !list.length && !ABIERTO_SIN_PERSONAL && !adm)
+      return out_({ ok: false, error: 'Falta rellenar la pestaña PERSONAL con al menos un código. Mientras esté vacía, la app no sirve datos' });
+    if (p.action === 'login' && me) logSeg_('entrada', me.nombre + (adm ? ' (admin)' : ''));
     var canEdit = !list.length || adm || !!(me && me.notas);
     var canConex = !list.length || adm || !!(me && me.conex);
     if (p.action === 'setConex') {
@@ -106,6 +121,7 @@ function handle_(p) {
     if (/^(addNote|delNote|upload|delFile|clearScans)$/.test(p.action)) {
       if (!canEdit) throw new Error('Tu código no tiene permiso para editar notas, fotos ni status');
       if (me) p.author = me.nombre;
+      p.adm = adm; p.ident = !!me;   // el borrado por autor solo se exige si hay personal identificado
     }
     switch (p.action) {
       case 'login': return out_({ ok: true, open: !list.length, nombre: me ? me.nombre : '', cargo: me ? me.cargo : '', notas: canEdit, conex: canConex, admin: adm });
@@ -154,6 +170,32 @@ function colLetter_(i) {
   var s = ''; i++;
   while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); }
   return s;
+}
+
+/* texto escrito por usuarios: que Sheets nunca lo interprete como fórmula (=, +, -, @) */
+function safe_(v, max) {
+  var t = String(v == null ? '' : v);
+  if (max && t.length > max) t = t.slice(0, max);
+  return /^[=+\-@\t\r]/.test(t) ? "'" + t : t;
+}
+function logSeg_(evento, detalle) {
+  try {
+    var sh = sheet_(HOJA_SEG, H_SEG);
+    sh.appendRow([Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'), evento, safe_(detalle, 300)]);
+  } catch (e) { }
+}
+/* valida el código de personal con freno a los intentos de adivinarlo */
+function auth_(list, code) {
+  var cache = CacheService.getScriptCache(), me = findPerson_(list, code);
+  var key = 'ok:' + md5_(String(code || '').trim().toUpperCase());
+  var locked = !!cache.get('lock');
+  if (me && me.activo && (!locked || cache.get(key))) { if (!cache.get(key)) cache.put(key, '1', 21600); return { me: me }; }
+  var n = Number(cache.get('fails') || 0) + 1;
+  cache.put('fails', String(n), 600);
+  if (n <= 40) logSeg_(locked ? 'intento durante bloqueo' : 'código incorrecto', 'intento ' + n);
+  if (n >= MAX_FALLOS && !locked) { cache.put('lock', '1', BLOQUEO_S); logSeg_('BLOQUEO', 'demasiados códigos incorrectos: entradas nuevas bloqueadas ' + Math.round(BLOQUEO_S / 60) + ' min'); }
+  Utilities.sleep(700);
+  return { fail: locked ? 'Demasiados intentos. Espera unos minutos y vuelve a probar' : 'Código de personal no válido o desactivado' };
 }
 
 function md5_(text) {
@@ -360,7 +402,7 @@ function setConex_(p) {
   Object.keys(p.changes).forEach(function (name) {
     var ci = L.head.indexOf(name);
     if (ci < 0 || !L.edit[ci]) throw new Error('La columna ' + name + ' no se puede editar');
-    var val = String(p.changes[name] == null ? '' : p.changes[name]).trim();
+    var val = String(p.changes[name] == null ? '' : p.changes[name]).trim().slice(0, 1000);
     if (/^STATUS_(FROM|TO)$/.test(name) && val && estados.indexOf(val) < 0) throw new Error('Status no válido: ' + val);
     var lid = String(p.id || '') + ':' + name;
     if (p.id && findRow_(lsh, lid)) return;   // ya aplicado (reintento tras un corte)
@@ -368,6 +410,7 @@ function setConex_(p) {
     var out = val;
     if (/^FECHA_/.test(name)) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(val); out = m ? new Date(+m[1], +m[2] - 1, +m[3]) : ''; }
     else if (/^\d+$/.test(val)) out = Number(val);
+    else out = safe_(val, 1000);
     cell.setValue(out);
     if (/^FECHA_/.test(name)) {   // la semana se calcula sola a partir de la fecha (si su celda no tiene fórmula)
       var gw = String(L.grp[ci] || '').toUpperCase(), wk = (out instanceof Date) ? isoWeekNum_(out) : '';
@@ -376,7 +419,7 @@ function setConex_(p) {
         var wc = sh.getRange(row, wi + 1); if (!wc.getFormula()) wc.setValue(wk);
       });
     }
-    lsh.appendRow([lid, now, String(p.cable), name, before instanceof Date ? Utilities.formatDate(before, tz, 'yyyy-MM-dd') : String(before), val, String(p.author || '')]);
+    lsh.appendRow([lid, now, safe_(p.cable, 200), name, safe_(before instanceof Date ? Utilities.formatDate(before, tz, 'yyyy-MM-dd') : String(before), 1000), safe_(val, 1000), safe_(p.author, 80)]);
     done++;
   });
   return { ok: true, applied: done };
@@ -594,27 +637,34 @@ function write_(p) {
       if (!p.id || !p.tag) throw new Error('Faltan datos de la nota');
       sh = sheet_(HOJA_NOTAS, H_NOTAS);
       if (!findRow_(sh, p.id)) {
-        sh.appendRow([String(p.id), String(p.tag), String(p.text || ''), String(p.date || ''), String(p.author || ''), p.estado ? JSON.stringify(p.estado) : '']);
+        sh.appendRow([String(p.id).slice(0, 80), safe_(p.tag, 200), safe_(p.text, 3000), String(p.date || '').slice(0, 40), safe_(p.author, 80), p.estado ? JSON.stringify(p.estado).slice(0, 2000) : '']);
       }
       return { ok: true };
 
     case 'delNote':
       sh = sheet_(HOJA_NOTAS, H_NOTAS);
       cell = findRow_(sh, p.id);
-      if (cell) sh.deleteRow(cell.getRow());
+      if (cell) {
+        var nAut = String(sh.getRange(cell.getRow(), 5).getValue() || '');
+        if (!p.adm && p.ident && nAut && nAut !== String(p.author || '')) throw new Error('Solo el autor de la nota o un administrador puede borrarla');
+        sh.deleteRow(cell.getRow());
+      }
       return { ok: true };
 
     case 'upload':
       if (p.kind && p.kind !== 'photo') throw new Error('Desde la app solo se pueden subir fotos; los PDF los sube solo el administrador (uploadPdf)');
       if (!p.uid || !p.tag || !p.data) throw new Error('Faltan datos de la foto');
+      if (!/^image\/(jpeg|png|webp)$/.test(String(p.mime || 'image/jpeg'))) throw new Error('Solo se admiten fotos JPG, PNG o WEBP');
+      if (String(p.data).length > MAX_FOTO_BYTES * 1.4) throw new Error('La foto pesa más de 8 MB');
       sh = sheet_(HOJA_ARCHIVOS, H_ARCH);
       if (findRow_(sh, p.uid)) return { ok: true, duplicate: true };
       var safeTag = String(p.tag).replace(/[^\w.=\-]+/g, '_');
       var name = safeTag + '__' + String(p.name || 'foto.jpg');
+      name = name.replace(/[^\w.=\-]+/g, '_').slice(0, 120);
       var blob = Utilities.newBlob(Utilities.base64Decode(p.data), p.mime || 'image/jpeg', name);
       var file = fotosFolder_().createFile(blob);
-      sh.appendRow([String(p.uid), file.getId(), String(p.tag), 'photo', String(p.name || ''),
-        String(p.mime || ''), String(p.date || ''), String(p.author || '')]);
+      sh.appendRow([String(p.uid).slice(0, 80), file.getId(), safe_(p.tag, 200), 'photo', safe_(p.name, 120),
+        String(p.mime || ''), String(p.date || '').slice(0, 40), safe_(p.author, 80)]);
       return { ok: true, id: file.getId() };
 
     case 'uploadPdf':
@@ -651,6 +701,8 @@ function write_(p) {
       sh = sheet_(HOJA_ARCHIVOS, H_ARCH);
       cell = findRow_(sh, p.uid);
       if (cell) {
+        var fAut = String(sh.getRange(cell.getRow(), 8).getValue() || '');
+        if (!p.adm && p.ident && fAut && fAut !== String(p.author || '')) throw new Error('Solo el autor de la foto o un administrador puede borrarla');
         var fid = sh.getRange(cell.getRow(), 2).getValue();
         try { DriveApp.getFileById(fid).setTrashed(true); } catch (e) { }
         sh.deleteRow(cell.getRow());
@@ -675,7 +727,10 @@ function write_(p) {
         s2.setFrozenRows(1);
       }
       if (p.rows && p.rows.length) {
-        s2.getRange(s2.getLastRow() + 1, 1, p.rows.length, p.rows[0].length).setValues(p.rows);
+        if (p.rows.length > 5000) throw new Error('Demasiadas filas de una vez (máximo 5000)');
+        var wcols = p.rows[0].length;
+        var clean = p.rows.map(function (r) { var o = []; for (var q = 0; q < wcols; q++) o.push(safe_(r[q], 500)); return o; });
+        s2.getRange(s2.getLastRow() + 1, 1, clean.length, wcols).setValues(clean);
       }
       return { ok: true, added: (p.rows || []).length };
   }
