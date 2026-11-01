@@ -285,6 +285,12 @@
     <span class="pv-title" id="pvTitle"></span>
     <span class="pv-tools"><button class="btn small" id="pvOut" aria-label="Alejar">−</button><button class="btn small" id="pvFit" title="Ajustar al ancho"><span id="pvZoom">100 %</span></button><button class="btn small" id="pvIn" aria-label="Acercar">+</button><span class="pv-page" id="pvPage"></span></span>
   </div>
+  <form class="pv-find" id="pvFind" role="search">
+    <input id="pvQ" type="search" placeholder="Buscar texto en el PDF" aria-label="Buscar texto en el PDF" autocomplete="off" spellcheck="false">
+    <span class="pv-count" id="pvCount" aria-live="polite"></span>
+    <button class="btn small" type="button" id="pvPrev" aria-label="Anterior">▲</button>
+    <button class="btn small" type="button" id="pvNext" aria-label="Siguiente">▼</button>
+  </form>
   <div class="pv-body" id="pvBody"></div>
 </div>
 

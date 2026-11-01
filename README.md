@@ -78,6 +78,7 @@ La pestaña **Transit** usa la columna `ROUTE_CODES` del CC_SCHEDULE (todas las 
 - **Actualizar sin entrar a Ajustes**: botón de actualizar en la cabecera. **Tema** claro/oscuro/auto con el botón de la cabecera.
 - **Proteger Ajustes con PIN** (opcional): pon en `config.js` `pinHash` con el SHA-256 del PIN. Si queda vacío, Ajustes queda abierto.
 - **Biblioteca** (pestaña nueva): PDF útiles del proyecto, no ligados a un cable. Dos carpetas en Drive, `CableScan_PDF_Isometrico_Bandeja` y `CableScan_PDF_Transit` (se crean con `autorizar`). Cada subcarpeta (por ejemplo, Nivel 1, Nivel 2) es una categoría y se ordena sola. Se busca por nombre o carpeta. El administrador sube desde la app (elige tipo y carpeta, y si no existe se crea) o suelta archivos en Drive y ejecuta `indexarPdf`.
+- **Buscar dentro del PDF**: el visor muestra el PDF con su texto real. Se puede seleccionar y copiar, y hay un buscador (también con Ctrl+F) que resalta todas las coincidencias, ignora mayúsculas y acentos y salta de una a otra. Un PDF escaneado sin texto sigue viéndose como imagen y no se puede buscar.
 - **PDF solo lectura**: se ven dentro de la app (zoom, páginas), sin botón de descarga ni impresión. Es una barrera práctica, no un bloqueo absoluto: quien sepa puede capturar la pantalla.
 
 ## 5d. Personal, permisos y status de campo
