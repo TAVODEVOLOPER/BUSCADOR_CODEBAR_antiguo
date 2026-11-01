@@ -473,11 +473,18 @@ async function switchCam() {
 /* ---------- Pestañas ---------- */
 const TAB_MOD = { scan: 'cab', search: 'cab', list: 'cab', routes: 'cab', library: 'cab', stats: 'cab', cbuscar: 'con', cresumen: 'con' };
 const MOD_DEFAULT = { cab: 'scan', con: 'cbuscar' };
+$$('.sgrp').forEach(g => g.addEventListener('toggle', () => { if (g.open) $$('.sgrp').forEach(o => { if (o !== g) o.open = false; }); }));
+function navOpen(v) { $('#app').classList.toggle('nav-open', !!v); $('#btnNav').setAttribute('aria-expanded', !!v); }
+$('#btnNav').addEventListener('click', () => navOpen(!$('#app').classList.contains('nav-open')));
+$('#navScrim').addEventListener('click', () => navOpen(false));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') navOpen(false); });
 function setTab(name) {
   const mod = TAB_MOD[name] || 'cab', was = $('#app').dataset.mod;
   if (was && was !== mod && $('#view').classList.contains('open')) closeCable();
   $('#app').dataset.tab = name; $('#app').dataset.mod = mod; LS.set('tab_' + mod, name);
-  $$('.mod').forEach(b => { const on = b.dataset.mod === mod; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+  if (was !== mod) $$('.sgrp[data-mod]').forEach(g => { g.open = g.dataset.mod === mod; });
+  { const cur = $('.snav[data-tab="' + name + '"]'); $('#barSec').textContent = cur ? cur.querySelector('span').textContent : ''; }
+  navOpen(false);
   $$('.tab,.snav[data-tab]').forEach(x => { const on = x.dataset.tab === name; x.classList.toggle('active', on); x.setAttribute('aria-selected', on); });
   $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
   if (DATA) { if (name === 'search') renderSearch(); if (name === 'list') renderList(); }
@@ -488,7 +495,7 @@ function setTab(name) {
   if (name === 'library' && typeof renderLibrary === 'function') renderLibrary();
 }
 $$('.tab,.snav[data-tab]').forEach(t => { t.dataset.mod = TAB_MOD[t.dataset.tab]; t.addEventListener('click', () => setTab(t.dataset.tab)); });
-$$('.mod').forEach(b => b.addEventListener('click', () => setTab(LS.get('tab_' + b.dataset.mod, MOD_DEFAULT[b.dataset.mod]))));
+$$('.snav[data-proxy]').forEach(b => b.addEventListener('click', () => navOpen(false)));
 $('#app').dataset.mod = 'cab';
 $$('.snav[data-proxy]').forEach(b => b.addEventListener('click', () => $('#' + b.dataset.proxy).click()));
 setTab($('#app').dataset.tab);
@@ -579,6 +586,7 @@ function paintSF() {
   const p = $('#sfPanel');
   p.hidden = !sfMode;
   if (!sfMode) return;
+  const place = () => { if (innerWidth >= 900) { const t = Math.max(8, $('.sfbar').getBoundingClientRect().top); p.style.top = t + 'px'; p.style.maxHeight = (innerHeight - t - 16) + 'px'; } else { p.style.top = p.style.maxHeight = ''; } };
   if (sfMode === 'cols') {
     p.innerHTML = `<input class="sf-find" type="search" placeholder="Buscar columna" autocomplete="off"><div class="sf-list">` +
       S.columns.map((c, i) => `<label class="sf-item" data-n="${esc(norm(c.name))}"><input type="checkbox" data-c="${i}" ${searchCols.has(i) ? 'checked' : ''}><span>${esc(c.name)}</span></label>`).join('') + `</div>
@@ -596,6 +604,7 @@ function paintSF() {
       <div class="sf-list">` + vals.slice(0, 800).map(([v, n]) => `<label class="sf-item" data-n="${esc(norm(v))}"><input type="checkbox" data-v="${esc(v)}" ${sel.has(v) ? 'checked' : ''}><span>${esc(v)}</span><small>${n}</small></label>`).join('') + `</div>
       <p class="help">${vals.length > 800 ? 'Se muestran los primeros 800 valores; usa el buscador. ' : ''}Sin ninguno marcado no se filtra esta columna.</p>`;
   }
+  p.insertAdjacentHTML('afterbegin', '<button class="sf-x" type="button" data-x="1">Cerrar</button>'); place();
 }
 const sfHide = (p) => { const t = norm(p.value); p.parentElement.querySelectorAll('.sf-item').forEach(el => el.hidden = !!t && !el.dataset.n.includes(t)); };
 $('#btnSCols').addEventListener('click', () => { sfMode = sfMode === 'cols' ? '' : 'cols'; paintSF(); });
@@ -625,6 +634,7 @@ $('#sfPanel').addEventListener('change', e => {
   searchLimit = 60; renderSearch();
 });
 $('#sfPanel').addEventListener('click', e => {
+  if (e.target.closest('[data-x]')) { sfMode = ''; paintSF(); return; }
   const a = e.target.closest('[data-a]'); if (!a) return;
   const set = colFilters.get(sfCol) || new Set();
   if (a.dataset.a === 'none') set.clear();
@@ -1322,7 +1332,8 @@ function paintAccess() {
   const ok = canSettings();
   $$('#btnSettings,.snav[data-proxy="btnSettings"]').forEach(b => { b.hidden = !ok; });
   const n = LS.get('userName', '') || LS.get('userCode', '');
-  $('#umWho').innerHTML = n ? `<b>${esc(n)}</b><small>${LS.get('userAdmin', false) ? 'Administrador' : LS.get('userNotes', true) !== false ? 'Puede editar' : 'Solo lectura'}</small>` : '<b>Sin identificar</b>';
+  const who = n ? `<b>${esc(n)}</b><small>${LS.get('userAdmin', false) ? 'Administrador' : LS.get('userNotes', true) !== false ? 'Puede editar' : 'Solo lectura'}</small>` : '<b>Sin identificar</b>';
+  $('#umWho').innerHTML = who; $('#sideWho').innerHTML = who;
   $('#btnMenu').classList.toggle('has-user', !!n);
 }
 $('#btnMenu').addEventListener('click', e => {
@@ -1665,3 +1676,9 @@ document.addEventListener('keydown', e => {
     if (!isWide() && LS.get('camAuto', false) && $('#app').dataset.tab === 'scan' && perm && perm.state === 'granted') startCam();
   } catch { }
 })();
+
+/* en escritorio la rueda del ratón desliza las etiquetas de status de lado */
+document.addEventListener('wheel', e => {
+  const f = e.target.closest && e.target.closest('.filters'); if (!f || f.scrollWidth <= f.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  f.scrollLeft += e.deltaY; e.preventDefault();
+}, { passive: false });

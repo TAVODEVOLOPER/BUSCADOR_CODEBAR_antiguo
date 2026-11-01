@@ -155,3 +155,8 @@ extras/data.json                  copia de la tabla (NO subir a GitHub)
 - La columna de semana (nombre con SEM o WEEK) se calcula sola con la fecha de su lado (From / To). Si su celda tiene fórmula en el Sheet, se respeta la fórmula.
 - Si STATUS_FROM (o STATUS_TO) está en IMPUTADO, esa sección queda bloqueada. Solo el administrador la puede editar.
 - Solo el administrador puede borrar datos (dejar un campo vacío) y usar «Deshacer» en el historial.
+
+### Menú y filtros (v1.17.0)
+- Menú agrupado con subgrupos: Cableado (En campo, Documentos, Avance), Conexionado (Consulta, Avance) y Herramientas. Se abre un grupo a la vez.
+- En móvil y tablet el menú es un cajón lateral (botón de las tres rayas, arriba a la izquierda). Ya no hay barra de pestañas abajo.
+- En PC, los filtros de Buscar se abren en un panel ancho sobre la ficha, con botón Cerrar. Las etiquetas de status van en una sola fila que se desliza (rueda del ratón o dedo).
