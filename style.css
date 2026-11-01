@@ -685,7 +685,7 @@ body{background:var(--bg) url(bg-m.jpg) center/cover fixed no-repeat}
 .cx-dot{width:8px;height:8px;border-radius:50%;background:#00B050;display:inline-block}
 .cx-f input,.cx-f textarea{width:100%;min-height:44px;padding:8px 10px;border:1.5px solid var(--steel);border-radius:var(--r);background:var(--surface);color:var(--ink);font:inherit}
 .cx-opts{margin:2px 0 0}
-.cx-save{position:sticky;bottom:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 0;background:linear-gradient(transparent,var(--bg) 30%)}
+.cx-save{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:14px 0 6px}
 .cx-hist h3{margin:18px 0 6px}
 .cx-hero{display:flex;gap:18px;align-items:center;padding:18px;border-radius:14px;background:var(--fathom);color:#fff;border-bottom:5px solid #3CC8C8}
 .cx-hero h3{margin:0 0 4px;font-size:18px}.cx-hero p{margin:2px 0}.cx-hero .muted{color:#B9C8D1}

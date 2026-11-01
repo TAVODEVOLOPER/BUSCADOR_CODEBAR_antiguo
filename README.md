@@ -160,3 +160,7 @@ extras/data.json                  copia de la tabla (NO subir a GitHub)
 - Menú agrupado con subgrupos: Cableado (En campo, Documentos, Avance), Conexionado (Consulta, Avance) y Herramientas. Se abre un grupo a la vez.
 - En móvil y tablet el menú es un cajón lateral (botón de las tres rayas, arriba a la izquierda). Ya no hay barra de pestañas abajo.
 - En PC, los filtros de Buscar se abren en un panel ancho sobre la ficha, con botón Cerrar. Las etiquetas de status van en una sola fila que se desliza (rueda del ratón o dedo).
+
+### Conexionado (v1.18.0)
+- El Resumen cuenta todos los cables de instrumentación del CC_SCHEDULE (igual que Cableado). Los que todavía no tienen fila en CONEXIONADO salen como "Sin iniciar".
+- Los botones Guardar cambios y Descartar van al final de la ficha, sin flotar.
