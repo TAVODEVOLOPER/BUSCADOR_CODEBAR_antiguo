@@ -1177,12 +1177,12 @@ function openPdf() {
   pdfSel = Array.isArray(saved) && saved.length ? saved.filter(n => names.has(n)) : pdfDefaults();
   if (!pdfSel.length) pdfSel = pdfDefaults();
   $('#pTitle').value = LS.get(pdfMode === 'con' ? 'pdfTitleCx' : 'pdfTitle', pdfMode === 'con' ? 'Lista de trabajo de conexionado' : 'Lista de trabajo');
-  $('#pdfModal').hidden = false; renderPdfPicker();
+  $('#pdfModal').classList.toggle('compact', pdfMode === 'con'); $('#pdfModal').hidden = false; renderPdfPicker();
 }
 function renderPdfPicker() {
   const f = nname($('#pFilter').value), all = [PDF_NOTAS, ...pdfNames()];
   const label = n => n === PDF_NOTAS ? 'NOTAS (columna en blanco para observaciones)' : n;
-  $('#pHelp').textContent = `${pdfItems().length.toLocaleString('es-ES')} cables. Orden de columnas: ${pdfSel.map(n => n === PDF_NOTAS ? 'NOTAS' : n).join(' / ') || 'ninguna'}`;
+  $('#pHelp').textContent = pdfMode === 'con' ? `${pdfItems().length.toLocaleString('es-ES')} cables. Formato de campo: cable, desde, hasta, status, casilla de conexión y observaciones. Cabe más o menos 15 cables por hoja.` : `${pdfItems().length.toLocaleString('es-ES')} cables. Orden de columnas: ${pdfSel.map(n => n === PDF_NOTAS ? 'NOTAS' : n).join(' / ') || 'ninguna'}`;
   $('#pList').innerHTML = all.filter(n => !f || nname(label(n)).includes(f)).map(n => {
     const k = pdfSel.indexOf(n);
     return `<label class="citem"><input type="checkbox" data-n="${esc(n)}" ${k >= 0 ? 'checked' : ''}>${k >= 0 ? `<span class="ord">${k + 1}</span>` : '<b></b>'}<span>${esc(label(n))}</span></label>`;
@@ -1199,11 +1199,12 @@ $('#pClose').addEventListener('click', () => { $('#pdfModal').hidden = true; });
 $('#btnPdf').addEventListener('click', () => { pdfMode = 'cab'; DATA ? openPdf() : toast('Todavía no hay tabla cargada'); });
 const loadScript = src => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ko(new Error('no se pudo cargar ' + src)); document.head.appendChild(s); });
 $('#pGo').addEventListener('click', async () => {
-  if (!pdfSel.length) return toast('Elige al menos una columna');
+  if (!pdfSel.length && pdfMode !== 'con') return toast('Elige al menos una columna');
   try {
     $('#pGo').disabled = true; toast('Preparando el PDF', 8000);
     if (!(window.jspdf && window.jspdf.jsPDF)) { await loadScript('vendor/jspdf.umd.min.js'); await loadScript('vendor/jspdf.plugin.autotable.min.js'); }
     const title = $('#pTitle').value.trim() || 'Lista de trabajo'; LS.set(pdfMode === 'con' ? 'pdfTitleCx' : 'pdfTitle', title);
+    if (pdfMode === 'con') { await cxWorkPdf(title); toast('PDF descargado', 3000); return; }
     const head = pdfSel.map(n => n === PDF_NOTAS ? 'NOTAS' : n);
     const items = pdfItems(), body = items.map(x => pdfSel.map(n => n === PDF_NOTAS ? '' : fmtVal(String(pdfVal(x, n) ?? '').trim())));
     const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });

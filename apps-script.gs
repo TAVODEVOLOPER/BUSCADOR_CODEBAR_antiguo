@@ -237,6 +237,8 @@ function namedFolder_(propKey, name) {
   return f;
 }
 function fotosFolder_() { return namedFolder_('FOLDER_FOTOS', CARPETA_FOTOS); }
+var CARPETAS_SIS = { fds:['FOLDER_FDS','CableScan_PDF_FDS'], hvac:['FOLDER_HVAC','CableScan_PDF_HVAC'], tierra:['FOLDER_TIERRA','CableScan_PDF_Tierra'], proc:['FOLDER_PROC','CableScan_PDF_Procesos'] };
+function sisFolder_(t) { return namedFolder_(CARPETAS_SIS[t][0], CARPETAS_SIS[t][1]); }
 function isoFolder_() { return namedFolder_('FOLDER_ISO', CARPETA_ISO); }
 function transitFolder_() { return namedFolder_('FOLDER_TRANSIT', CARPETA_TRANSIT); }
 function sepFolder_() { return namedFolder_('FOLDER_SEP', CARPETA_SEP); }
@@ -257,6 +259,7 @@ function autorizar() {
   isoFolder_();
   transitFolder_();
   sepFolder_();
+  for (var kt in CARPETAS_SIS) sisFolder_(kt);
   indexarPdf();
   Logger.log('Listo. Ya puedes implementar como aplicación web.');
 }
@@ -277,6 +280,7 @@ function indexarPdf() {
   walk(isoFolder_(), 'iso', '');
   walk(transitFolder_(), 'transit', '');
   walk(sepFolder_(), 'sep', '');
+  for (var kt in CARPETAS_SIS) walk(sisFolder_(kt), kt, '');
   var sh = sheet_(HOJA_PDF, H_PDF);
   sh.getRange(1, 1, 1, H_PDF.length).setValues([H_PDF]);
   if (sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, H_PDF.length).clearContent();
@@ -676,7 +680,7 @@ function write_(p) {
       var bytes = Utilities.base64Decode(p.data);
       if (bytes.length > MAX_PDF_BYTES) throw new Error('El PDF pesa más de 30 MB');
       var base = String(p.name || '').replace(/\.pdf$/i, '').replace(/[\/\\]+/g, '-').trim();
-      var ptipo = /^(iso|transit|sep)$/.test(p.tipo) ? p.tipo : 'pulling';
+      var ptipo = /^(iso|transit|sep|fds|hvac|tierra|proc)$/.test(p.tipo) ? p.tipo : 'pulling';
       var pname, dest;
       if (ptipo === 'pulling') {
         if (!p.tag) throw new Error('Falta el tag del cable');
@@ -686,7 +690,7 @@ function write_(p) {
       } else {
         if (!base) throw new Error('Falta el nombre del PDF');
         pname = base + '.pdf';
-        dest = ptipo === 'iso' ? isoFolder_() : ptipo === 'sep' ? sepFolder_() : transitFolder_();
+        dest = CARPETAS_SIS[ptipo] ? sisFolder_(ptipo) : ptipo === 'iso' ? isoFolder_() : ptipo === 'sep' ? sepFolder_() : transitFolder_();
         var cf = String(p.carpeta || '').replace(/[\/\\]+/g, '-').trim();
         if (cf) { var it = dest.getFoldersByName(cf); dest = it.hasNext() ? it.next() : dest.createFolder(cf); }
       }

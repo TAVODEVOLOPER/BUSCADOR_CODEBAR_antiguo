@@ -683,6 +683,11 @@ body{background:var(--bg) url(bg-m.jpg) center/cover fixed no-repeat}
 .cx-f{padding:8px 0;border-top:1px solid var(--hair)}
 .cx-f label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-bottom:4px}
 .cx-dot{width:8px;height:8px;border-radius:50%;background:#00B050;display:inline-block}
+.cx-dot.on,.cx-f.done .cx-dot{background:#2F6FDE}
+.cx-f.done input,.cx-f.done textarea,.cx-f.done select{background:#E8F0FD;border-color:#2F6FDE}
+.cx-f.todo input,.cx-f.todo textarea,.cx-f.todo select{background:#EAF8EF;border-color:#00B050}
+.cx-key{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:0 0 8px}
+.cx-key .cx-dot:not(:first-child){margin-left:10px}
 .cx-f input,.cx-f textarea{width:100%;min-height:44px;padding:8px 10px;border:1.5px solid var(--steel);border-radius:var(--r);background:var(--surface);color:var(--ink);font:inherit}
 .cx-opts{margin:2px 0 0}
 .cx-save{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:14px 0 6px}
@@ -775,3 +780,6 @@ body{background:var(--bg) url(bg-m.jpg) center/cover fixed no-repeat}
 .wk-st th,.wk-st td{white-space:nowrap;text-align:right}
 .wk-st th:first-child,.wk-st td:first-child{text-align:left;position:sticky;left:0;background:var(--surface)}
 .wk-st tfoot td{font-weight:700;border-top:2px solid var(--hair)}
+.legend tfoot td{font-weight:700;border-top:2px solid var(--hair)}
+#pdfModal.compact #pList,#pdfModal.compact #pFilter,#pdfModal.compact #pDefault{display:none}
+#pdfModal.compact .sheet{height:auto}

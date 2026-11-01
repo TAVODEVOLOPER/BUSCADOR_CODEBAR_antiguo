@@ -182,3 +182,7 @@ La clave `DRAGADOS-ADMIN` va en config.js, que es público en GitHub Pages: no e
 - Las listas solo pueden escribir en pestañas ESCANEOS* o LISTA_*.
 - Resumen de Conexionado: sin Estado por extremo; el gráfico semanal cuenta puntas conectadas (From + To) con meta de 50 (`metaConexion` en config.js).
 - Resumen de Cableado: la meta es 3000 m por semana (tendido + coil). Después de Metros por semana hay una tabla por semana con cables por status actual y metros de Tendido y Coil.
+
+## v1.21.0
+- Biblioteca: nuevas carpetas de sistemas FDS, HVAC, Tierra y Procesos (Drive: CableScan_PDF_FDS, _HVAC, _Tierra, _Procesos). Vuelve a ejecutar `autorizar` en Apps Script y reimplementa para crearlas.
+- Conexionado: campos verdes por llenar; al llenarse cambian a azul.

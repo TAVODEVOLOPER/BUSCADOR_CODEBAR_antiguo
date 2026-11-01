@@ -31,7 +31,7 @@ function cxItemVal(x, name) {
   if (name === 'Avance') return cxItemAv(x) + ' %';
   if (name === 'Origen') return cxIsNew(x.tag) ? 'Nuevo del CC_SCHEDULE' : 'CONEXIONADO';
   const i = CX.data ? CX.idx.get(norm(x.tag)) : undefined;
-  if (i !== undefined) { const ci = CX.ci.get(name); return ci === undefined ? '' : (CX.data.rows[i][ci] ?? ''); }
+  if (i !== undefined) { let ci = CX.ci.get(name); if (ci === undefined) ci = CX.data.cols.findIndex(k => nname(k.name) === nname(name)); return ci < 0 ? '' : (CX.data.rows[i][ci] ?? ''); }
   if (typeof CCD !== 'undefined' && CCD.src) {
     const ri = CCD.idx.get(norm(x.tag)); if (ri === undefined) return '';
     const ci = CCD.src.columns.findIndex(c => nname(c.name) === nname(name));
@@ -97,3 +97,43 @@ $('#vAddList').addEventListener('click', () => {
   cxListAdd([CX.sel]); toast('Añadido a la lista'); renderCxSearch();
 });
 cxListPaint();
+
+
+/* ---------- PDF de trabajo de campo (compacto: unos 15 cables por hoja) ---------- */
+async function cxWorkPdf(title) {
+  if (!(window.jspdf && window.jspdf.jsPDF)) { await loadScript('vendor/jspdf.umd.min.js'); await loadScript('vendor/jspdf.plugin.autotable.min.js'); }
+  const sh = v => String(v ?? '').replace(/^#HKF\./, '').trim(), V = (x, n) => String(cxItemVal(x, n) ?? '').trim();
+  const key = x => (V(x, 'From_Area') || '~') + '|' + (V(x, 'To_Area') || '~') + '|' + x.tag;   // por área; los nuevos sin área al final
+  const items = CX.list.slice().sort((a, b) => key(a).localeCompare(key(b), 'es', { numeric: true }));
+  const side = (x, s) => { const stt = V(x, 'STATUS_' + s).toUpperCase(), ar = V(x, s + '_Area'), em = V(x, 'Subc_Conn_' + s); return { stt, txt: `${sh(V(x, s + '_Tag')) || '-'}\n${[ar, em].filter(Boolean).join('  |  ') || ' '}` }; };
+  const body = items.map((x, n) => { const f = side(x, 'From'), t = side(x, 'To'), nuevo = cxIsNew(x.tag);
+    return [n + 1, `${sh(x.tag)}\n${nuevo ? 'NUEVO (CC_SCHEDULE)' : 'Avance ' + cxItemAv(x) + ' %'}`, f.txt, f.stt === 'IMPUTADO' ? 'HECHO' : (f.stt ? f.stt : 'SIN STATUS'), f.stt === 'IMPUTADO' ? 'OK' : '', t.txt, t.stt === 'IMPUTADO' ? 'HECHO' : (t.stt ? t.stt : 'SIN STATUS'), t.stt === 'IMPUTADO' ? 'OK' : '', '']; });
+  const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), when = new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+  const nn = items.filter(x => cxIsNew(x.tag)).length;
+  doc.autoTable({
+    head: [['#', 'Cable', 'Desde (From)', 'Status From', 'Conex.', 'Hasta (To)', 'Status To', 'Conex.', 'Observaciones']], body,
+    startY: 19, margin: { top: 19, left: 8, right: 8, bottom: 11 },
+    styles: { font: 'helvetica', fontSize: 7.5, cellPadding: { top: 1.4, bottom: 1.4, left: 1.6, right: 1.6 }, lineColor: [150, 158, 166], lineWidth: 0.15, valign: 'middle', overflow: 'linebreak', minCellHeight: 11 },
+    headStyles: { fillColor: [16, 32, 48], textColor: 255, fontStyle: 'bold', minCellHeight: 6.5, fontSize: 7.5 },
+    alternateRowStyles: { fillColor: [246, 248, 250] },
+    columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 52, fontStyle: 'bold' }, 2: { cellWidth: 54 }, 3: { cellWidth: 24, halign: 'center', fontSize: 6.8 }, 4: { cellWidth: 12, halign: 'center' }, 5: { cellWidth: 54 }, 6: { cellWidth: 24, halign: 'center', fontSize: 6.8 }, 7: { cellWidth: 12, halign: 'center' }, 8: { cellWidth: 'auto' } },
+    rowPageBreak: 'avoid',
+    didParseCell: d => {
+      if (d.section !== 'body') return;
+      if (d.column.index === 3 || d.column.index === 6) { const v = String(d.cell.raw); d.cell.styles.fontStyle = 'bold'; d.cell.styles.textColor = v === 'HECHO' ? [10, 120, 80] : v === 'FALTA' || v === 'NO ENCONTRADO' ? [190, 40, 30] : [150, 100, 0]; }
+      if (d.column.index === 1) d.cell.styles.fontStyle = 'bold';
+    },
+    didDrawCell: d => {   // casilla vacía para marcar en campo
+      if (d.section !== 'body' || (d.column.index !== 4 && d.column.index !== 7)) return;
+      const c = d.cell, s = 4.2, x = c.x + (c.width - s) / 2, y = c.y + (c.height - s) / 2;
+      doc.setDrawColor(40, 50, 60); doc.setLineWidth(0.35); if (String(c.raw) !== 'OK') doc.rect(x, y, s, s);
+    },
+    didDrawPage: d => {
+      doc.setFontSize(13); doc.setTextColor(16, 32, 48); doc.text(title, 8, 10.5);
+      doc.setFontSize(8.5); doc.setTextColor(90, 100, 110); doc.text(`${when}  |  ${items.length} cables${nn ? `, ${nn} nuevos` : ''}`, 8, 15.5);
+      doc.text(`Hoja ${d.pageNumber}`, W - 8, H - 4.5, { align: 'right' });
+    },
+  });
+  doc.save(`lista_conexionado_${cxStamp()}.pdf`);
+}

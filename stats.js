@@ -267,18 +267,29 @@ const WEEK_MODES = [
   { k: 'tend', name: 'Tendidos' }, { k: 'curso', name: 'En curso' }, { k: 'inc', name: 'Incidencias' }, { k: 'all', name: 'Todos los estados' },
 ];
 
-/* por semana: cuántos cables hay en cada STATUS ACTUAL y los metros de Tendido y Coil (semana = la de su último estado) */
-function wkStatusHtml(d) {
-  const sts = d.statuses.map(([n]) => n), rows = [...d.weeks]; if (d.wst.has(0)) rows.push(0);
-  if (!rows.length) return '';
-  const cell = (w, n) => (d.wst.get(w) || new Map()).get(n) || 0;
-  const tot = w => sts.reduce((a, n) => a + cell(w, n), 0), mt = w => d.mw.tend.get(w) || 0, mc = w => d.mw.coil.get(w) || 0;
-  const head = `<thead><tr><th>Semana</th>${sts.map(n => `<th>${esc(n)}</th>`).join('')}<th>Total cables</th><th>Tendido (m)</th><th>Coil (m)</th></tr></thead>`;
-  const body = rows.map(w => `<tr><td>${w ? 'S' + w : 'Sin semana'}</td>${sts.map(n => `<td>${cell(w, n) ? nf(cell(w, n)) : '–'}</td>`).join('')}<td><b>${nf(tot(w))}</b></td><td>${w ? nf(mt(w)) : nf(d.mNW.tend)}</td><td>${w ? nf(mc(w)) : nf(d.mNW.coil)}</td></tr>`).join('');
-  const foot = `<tfoot><tr><td>Total</td>${sts.map(n => `<td>${nf(rows.reduce((a, w) => a + cell(w, n), 0))}</td>`).join('')}<td>${nf(rows.reduce((a, w) => a + tot(w), 0))}</td><td>${nf(d.mT.tend)}</td><td>${nf(d.mT.coil)}</td></tr></tfoot>`;
-  return `<p class="chart-t">Cables por status actual y metros, por semana</p>
-    <p class="note-s">Cada cable cuenta en la semana de su último estado. Los metros son los de la columna de metros, solo de cables en TENDIDO y COIL.</p>
-    <div class="table-wrap wk-st"><table>${head}<tbody>${body}</tbody>${foot}</table></div>`;
+/* Reporte de la última semana: cables por STATUS ACTUAL y metros de Tendido y Coil. Usa la misma semana y los mismos metros que "Metros por semana", así que cuadran */
+function wkReportHtml(d) {
+  if (!d.weeks.length) return '';
+  const w = d.weeks[d.weeks.length - 1], st = d.wst.get(w) || new Map();
+  const list = [...st].sort((a, b) => b[1] - a[1]), n = list.reduce((a, [, v]) => a + v, 0);
+  const mt = d.mw.tend.get(w) || 0, mc = d.mw.coil.get(w) || 0, mtot = d.mw.all.get(w) || 0, meta = metaSemanal();
+  const rows = list.map(([name, v]) => { const c = catOf(name); return `<tr><td>${sw(c.css)}${esc(name)}</td><td>${nf(v)}</td><td>${pc(v, n)}</td></tr>`; }).join('');
+  return `<h3 class="h3b">Reporte última semana</h3>
+    <p class="note-s">Semana <b>S${w}</b>. Cada cable cuenta en la semana de su último estado.</p>
+    <table class="legend">
+      <thead><tr><th>Status actual</th><th>Cables</th><th>% de la semana</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="3">Sin cables esta semana</td></tr>'}</tbody>
+      <tfoot><tr><td>Total de cables</td><td>${nf(n)}</td><td>${n ? '100 %' : '–'}</td></tr></tfoot>
+    </table>
+    <table class="legend">
+      <thead><tr><th>Metros S${w}</th><th>Metros</th><th>% de la meta</th></tr></thead>
+      <tbody>
+        <tr><td>${sw('--v-good')}Tendido</td><td>${nf(mt)} m</td><td>${pc(mt, meta)}</td></tr>
+        <tr><td>${sw('--v-warn')}Coil</td><td>${nf(mc)} m</td><td>${pc(mc, meta)}</td></tr>
+      </tbody>
+      <tfoot><tr><td>Tendido + Coil</td><td>${nf(mtot)} m</td><td>${pc(mtot, meta)}</td></tr></tfoot>
+    </table>
+    <p class="note-s">Es el mismo valor de Última semana en Metros por semana (meta ${nf(meta)} m).</p>`;
 }
 
 function renderStats() {
@@ -356,7 +367,7 @@ function renderStats() {
     <h3>Por semana</h3>
     ${d.weeks.length ? `
     <div class="wk">${mHtml}</div>
-    <div class="wk">${wkStatusHtml(d)}</div>
+    <div class="wk">${wkReportHtml(d)}</div>
     <div class="wk">
       <p class="chart-t">Cables tendidos acumulados${d.hasSched ? ' (sobre ' + nf(d.total) + ' cables)' : ''}</p>
       <div class="chart" id="chCum"></div>

@@ -231,7 +231,8 @@ function renderCx(keepFocus) {
       const fc = d.cols.findIndex(z => /^FECHA_/i.test(z.name) && cxGrp(z) === g), dv = fc >= 0 ? (CX.draft[d.cols[fc].name] !== undefined ? CX.draft[d.cols[fc].name] : r[fc]) : '', wv = cxWeekNum(dv) || r[ci];
       return `<div class="kv"><span class="l">${esc(c.letter)}</span>${label}<span class="v ${wv ? '' : 'none'}">${wv ? esc(wv) + ' <small class="muted">automática</small>' : 'Sin dato'}</span></div>`;
     }
-    return c.edit && can && !lock ? `<div class="cx-f ed"><label>${label}${c.edit ? '<i class="cx-dot" title="Campo editable"></i>' : ''}</label>${cxInput(c, r[ci], can, !!r[ci])}</div>`
+    const filled = String(CX.draft[c.name] !== undefined ? CX.draft[c.name] : (r[ci] == null ? '' : r[ci])).trim() !== '';
+    return c.edit && can && !lock ? `<div class="cx-f ed ${filled ? 'done' : 'todo'}"><label>${label}<i class="cx-dot" title="${filled ? 'Campo editable, ya llenado' : 'Campo editable por llenar'}"></i></label>${cxInput(c, r[ci], can, !!r[ci])}</div>`
       : `<div class="kv"><span class="l">${esc(c.letter)}</span>${label}${cxInput(c, r[ci], false)}</div>`;
   }).join('')}</section>`;
   const hist = cxHistory(tag);
@@ -239,6 +240,7 @@ function renderCx(keepFocus) {
   $('#vBody').innerHTML = `
     <div class="d-top"><div class="marker"><span class="sleeve"></span><span class="mk-body"><b>${esc(tag)}</b></span><button class="btn small quiet copy" id="cxCopy">Copiar</button></div></div>
     ${can ? '' : '<p class="help">Tu código solo permite leer el conexionado.</p>'}
+    ${can ? '<p class="cx-key"><i class="cx-dot"></i> por llenar en campo <i class="cx-dot on"></i> ya llenado</p>' : ''}
     <div class="cx-sides">${groups.map(card).join('')}</div>
     ${can ? `<div class="cx-save"><button class="btn primary" id="cxSaveBtn" ${dirty ? '' : 'disabled'}>Guardar cambios${dirty ? ` (${dirty})` : ''}</button><button class="btn" id="cxDiscard" ${dirty ? '' : 'disabled'}>Descartar</button><span class="muted">Se guarda con tu nombre y la fecha.</span></div>` : ''}
     ${inCab ? '<div class="btn-row"><button class="btn" id="cxToCab">Abrir en Cableado</button></div>' : ''}
@@ -351,6 +353,7 @@ $('#vBody').addEventListener('click', e => {
 $('#vBody').addEventListener('input', e => {
   const f = e.target.dataset && e.target.dataset.f; if (!f || !CX.sel) return;
   CX.draft[f] = e.target.value;
+  const box = e.target.closest('.cx-f'); if (box) { const on = e.target.value.trim() !== ''; box.classList.toggle('done', on); box.classList.toggle('todo', !on); }
   const b = $('#cxSaveBtn'), n = Object.keys(CX.draft).length; if (b) { b.disabled = !n; b.textContent = `Guardar cambios (${n})`; } const dsc = $('#cxDiscard'); if (dsc) dsc.disabled = !n;
 });
 loadCx();
